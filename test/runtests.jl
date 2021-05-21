@@ -8,7 +8,8 @@ using Test
         e
     end
 
-    @test contains(exception |> string, "invalid wasm code")
+    exception_msg = string(exception)
+    @test occursin("invalid wasm code", exception_msg)
 end
 
 @testset "Basic export" begin

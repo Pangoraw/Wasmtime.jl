@@ -1,5 +1,7 @@
 module Wasmer
 
+using CEnum
+
 include("./LibWasmer.jl")
 using .LibWasmer
 
@@ -26,7 +28,7 @@ function check_wasmer_error()
     end
 end
 
-import Base:unsafe_convert
+import Base: unsafe_convert
 Base.unsafe_convert(::Type{Ptr{wasm_byte_vec_t}}, vec::wasm_byte_vec_t) =
     Base.unsafe_convert(Ptr{wasm_byte_vec_t}, Base.pointer_from_objref(vec))
 Base.unsafe_convert(::Type{Ptr{wasm_extern_vec_t}}, vec::wasm_extern_vec_t) =
@@ -54,17 +56,74 @@ macro wat_str(wat::String)
     :(wat2wasm($wat))
 end
 
+@cenum Compiler::UInt32 begin
+    Cranelift = 0x00
+    LLVM = 0x01
+    Singlepass = 0x02
+end
+
+@cenum Engine::UInt32 begin
+    JIT = 0x00
+    Native = 0x01
+    ObjectFile = 0x02
+end
+
+wasmer_is_compiler_available(compiler::Compiler) =
+    @ccall libwasmer.wasmer_is_compiler_available(compiler::Cint)::Bool
+
+wasmer_is_engine_available(engine::Engine) =
+    @ccall libwasmer.wasmer_is_engine_available(engine::Cint)::Bool
+
+function first_available_compiler()
+    compilers = Compiler[Cranelift, LLVM, Singlepass]
+    compiler_idx = findfirst(wasmer_is_compiler_available, compilers)
+    @assert compiler_idx !== nothing "No available compiler"
+    compilers[compiler_idx]
+end
+
+function first_available_engine()
+    engines = Engine[JIT, Native, ObjectFile]
+    engine_idx = findfirst(wasmer_is_engine_available, engines)
+    @assert engine_idx !== nothing "No available engine"
+    engines[engine_idx]
+end
+    
+struct WasmConfig
+    compiler::Compiler
+    engine::Engine
+
+    function WasmConfig(;
+        compiler::Compiler=first_available_compiler(),
+        engine::Engine=first_available_engine()
+    )
+        @assert wasmer_is_compiler_available(compiler) "Compiler $compiler is not available"
+        @assert wasmer_is_engine_available(engine) "Engine $engine is available"
+
+        new(compiler, engine)
+    end
+end
+
 mutable struct WasmEngine
     wasm_engine_ptr::Ptr{wasm_engine_t}
+    config::WasmConfig
 
-    WasmEngine(wasm_engine_ptr::Ptr{wasm_engine_t}) = finalizer(new(wasm_engine_ptr)) do wasm_engine
+    WasmEngine(wasm_engine_ptr::Ptr{wasm_engine_t}, config::WasmConfig) = finalizer(new(wasm_engine_ptr, config)) do wasm_engine
         wasm_engine_delete(wasm_engine.wasm_engine_ptr)
     end
 end
-function WasmEngine()
-    wasm_engine_ptr = LibWasmer.wasm_engine_new()
-    WasmEngine(wasm_engine_ptr)
+function WasmEngine(config::WasmConfig)
+    wasm_config_ptr = wasm_config_new()
+
+    @ccall libwasmer.wasm_config_set_compiler(wasm_config_ptr::Ptr{wasm_config_t}, config.compiler::Cint)::Cvoid
+    @ccall libwasmer.wasm_config_set_engine(wasm_config_ptr::Ptr{wasm_config_t}, config.engine::Cint)::Cvoid
+
+    wasm_engine_ptr = LibWasmer.wasm_engine_new_with_config(wasm_config_ptr)
+    WasmEngine(wasm_engine_ptr, config)
 end
+WasmEngine(;compiler=first_available_compiler(), engine=first_available_engine()) =
+    WasmEngine(WasmConfig(;compiler, engine))
+
+Base.show(io::IO, engine::WasmEngine) = print(io, "WasmEngine($(engine.config.compiler), $(engine.config.engine))")
 
 mutable struct WasmStore
     wasm_store_ptr::Ptr{wasm_store_t}
@@ -93,7 +152,7 @@ end
 mutable struct WasmInstance
     wasm_instance_ptr::Ptr{wasm_instance_t}
     wasm_module::WasmModule
-
+    
     WasmInstance(wasm_instance_ptr::Ptr{wasm_instance_t}, wasm_module::WasmModule) = finalizer(new(wasm_instance_ptr, wasm_module)) do wasm_instance
         wasm_instance_delete(wasm_instance.wasm_instance_ptr)
     end
@@ -106,7 +165,6 @@ function WasmInstance(store::WasmStore, wasm_module::WasmModule)
 end
 
 Base.show(io::IO, ::WasmInstance) = print(io, "WasmInstance()")
-Base.show(io::IO, ::WasmEngine) = print(io, "WasmModule()")
 Base.show(io::IO, ::WasmStore) = print(io, "WasmStore()")
 
 # TODO: the other value types
@@ -198,8 +256,6 @@ mutable struct WasmExport
 end
 
 function (wasm_export::WasmExport)(args...)
-
-
     wasm_externtype_ptr = wasm_exporttype_type(wasm_export.wasm_export_ptr)
     @assert wasm_externtype_ptr != C_NULL "Failed to get export type for export $(wasm_export.name)"
     wasm_externkind = wasm_externtype_kind(wasm_externtype_ptr)
@@ -227,9 +283,8 @@ function (wasm_export::WasmExport)(args...)
 
     wasm_func_call(extern_as_func, params_vec, results_vec)
 
-    results = wasm_val_t[]
-    for i in 1:result_arity
-        push!(results, Base.unsafe_load(results_vec.data, i))
+    results = map(1:result_arity) do i
+        Base.unsafe_load(results_vec.data, i)
     end
     wasm_val_vec_delete(params_vec)
     wasm_val_vec_delete(results_vec)
@@ -248,11 +303,10 @@ mutable struct WasmExports
         wasm_instance_exports(wasm_instance.wasm_instance_ptr, externs)
         @assert exports.size == externs.size
 
-        exports_vector = []
-        for i in 1:exports.size
+        exports_vector = map(1:exports.size) do i
             wasm_export_ptr = Base.unsafe_load(exports.data, i)
             wasm_extern_ptr = Base.unsafe_load(externs.data, i)
-            push!(exports_vector, WasmExport(wasm_export_ptr, wasm_extern_ptr, wasm_instance))
+            WasmExport(wasm_export_ptr, wasm_extern_ptr, wasm_instance)
         end
 
         new(wasm_instance, exports_vector)
