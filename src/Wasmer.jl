@@ -5,6 +5,8 @@ using CEnum
 include("./LibWasmer.jl")
 using .LibWasmer
 
+include("./vec_t.jl")
+
 function wasmer_last_error_length()
     ccall((:wasmer_last_error_length, libwasmer), Cint, ())
 end
@@ -28,28 +30,13 @@ function check_wasmer_error()
     end
 end
 
-# TODO: a wrapper around wasm_XXX_vec_t
-Base.unsafe_convert(::Type{Ptr{wasm_byte_vec_t}}, vec::wasm_byte_vec_t) =
-    Base.unsafe_convert(Ptr{wasm_byte_vec_t}, Base.pointer_from_objref(vec))
-Base.unsafe_convert(::Type{Ptr{wasm_extern_vec_t}}, vec::wasm_extern_vec_t) =
-    Base.unsafe_convert(Ptr{wasm_extern_vec_t}, Base.pointer_from_objref(vec))
-Base.unsafe_convert(::Type{Ptr{wasm_exporttype_vec_t}}, vec::wasm_exporttype_vec_t) =
-    Base.unsafe_convert(Ptr{wasm_exporttype_vec_t}, Base.pointer_from_objref(vec))
-Base.unsafe_convert(::Type{Ptr{wasm_val_vec_t}}, vec::wasm_val_vec_t) =
-    Base.unsafe_convert(Ptr{wasm_val_vec_t}, Base.pointer_from_objref(vec))
-Base.unsafe_convert(::Type{Ptr{wasm_importtype_vec_t}}, vec::wasm_importtype_vec_t) =
-    Base.unsafe_convert(Ptr{wasm_importtype_vec_t}, Base.pointer_from_objref(vec))
-Base.unsafe_convert(::Type{Ptr{wasm_valtype_vec_t}}, vec::wasm_valtype_vec_t) =
-    Base.unsafe_convert(Ptr{wasm_valtype_vec_t}, Base.pointer_from_objref(vec))
-
 LibWasmer.wasm_byte_vec_t(str::AbstractString) =
     wasm_byte_vec_t(length(str), Base.unsafe_convert(Cstring, Base.unsafe_wrap(Vector{UInt8}, str)))
 
-
 wat2wasm(str::AbstractString) =
-    wat2wasm(wasm_byte_vec_t(str))
-function wat2wasm(wat::wasm_byte_vec_t)
-    out = wasm_byte_vec_t(0, C_NULL)
+    wat2wasm(WasmByteVec(collect(wasm_byte_t, str)))
+function wat2wasm(wat::WasmByteVec)
+    out = WasmByteVec()
     ccall((:wat2wasm, libwasmer), Cvoid, (Ptr{wasm_byte_vec_t}, Ptr{wasm_byte_vec_t}), wat, out)
     check_wasmer_error()
 
@@ -146,7 +133,7 @@ mutable struct WasmModule
         wasm_module_delete(wasm_module.wasm_module_ptr)
     end
 end
-function WasmModule(store::WasmStore, wasm_byte_vec::wasm_byte_vec_t)
+function WasmModule(store::WasmStore, wasm_byte_vec::WasmByteVec)
     wasm_module_ptr = wasm_module_new(store.wasm_store_ptr, wasm_byte_vec)
     wasm_module_ptr == C_NULL && error("Failed to create wasm module")
 
@@ -157,25 +144,8 @@ julia_type_to_valtype(julia_type)::Ptr{wasm_valtype_t} =
     julia_type_to_valkind(julia_type) |> wasm_valtype_new
 
 function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
-    parameter_arity = length(input_types)
-    result_arity = return_type == Nothing ? 0 : 1
-
-    params_vec = wasm_valtype_vec_t(0, C_NULL);
-    if parameter_arity != 0
-        val_arr = map(julia_type_to_valkind, inputs_types)
-        GC.@preserve val_arr wasm_valtype_vec_new(params_vec, parameter_arity, pointer(val_arr))
-    else
-        wasm_valtype_vec_new_empty(params_vec);
-    end
-
-    results_vec = wasm_valtype_vec_t(0, C_NULL);
-    if result_arity != 0
-        val_ptr = julia_type_to_valtype(return_type);
-        val_arr = Ptr{wasm_valtype_t}[val_ptr]
-        GC.@preserve val_arr wasm_valtype_vec_new(results_vec, 1, pointer(val_arr))
-    else
-        wasm_valtype_vec_new_empty(results_vec)
-    end
+    params_vec = WasmPtrVec(collect(Ptr{wasm_valtype_t}, map(julia_type_to_valtype, input_types)))
+    results_vec = WasmPtrVec([julia_type_to_valtype(return_type)])
 
     func_type = wasm_functype_new(params_vec, results_vec)
     @assert func_type != C_NULL "Failed to create functype"
@@ -233,13 +203,9 @@ struct WasmImports
     wasm_imports::Vector{WasmImport}
 
     function WasmImports(wasm_module::WasmModule)
-        wasm_imports_vec = wasm_importtype_vec_t(0, C_NULL)
+        wasm_imports_vec = WasmPtrVec(wasm_importtype_t)
         wasm_module_imports(wasm_module.wasm_module_ptr, wasm_imports_vec)
-
-        wasm_imports = map(1:wasm_imports_vec.size) do i
-            wasm_importtype_ptr = Base.unsafe_load(wasm_imports_vec.data, i)
-            WasmImport(wasm_importtype_ptr)
-        end
+        wasm_imports = map(WasmImport, wasm_imports_vec)
 
         new(wasm_module, wasm_imports)
     end
@@ -262,16 +228,20 @@ function WasmInstance(store::WasmStore, wasm_module::WasmModule)
     n_expected_imports = length(module_imports.wasm_imports)
     @assert n_expected_imports == 0 "No imports provided, expected $n_expected_imports"
 
-    wasm_instance_ptr = wasm_instance_new(store.wasm_store_ptr, wasm_module.wasm_module_ptr, imports, C_NULL)
-    wasm_instance_ptr == C_NULL && error("Failed to create WASM instance")
+    empty_imports = WasmVecPtr(wasm_importtype_t)
+    wasm_instance_ptr = wasm_instance_new(store.wasm_store_ptr, wasm_module.wasm_module_ptr, empty_imports, C_NULL)
+    @assert wasm_instance_ptr != C_NULL "Failed to create WASM instance"
     WasmInstance(wasm_instance_ptr, wasm_module)
 end
-function WasmInstance(store::WasmStore, wasm_module::WasmModule, imports::Vector{T}) where T
-    imports_as_externs = map(map_to_extern, imports)
-    externs_vec = wasm_extern_vec_t(length(imports_as_externs), Base.pointer(imports_as_externs)) 
+function WasmInstance(store::WasmStore, wasm_module::WasmModule, host_imports::Vector{T}) where T
+    module_imports = imports(wasm_module)
+    n_expected_imports = length(module_imports.wasm_imports)
+    n_provided_imports = length(host_imports)
+    @assert n_expected_imports == length(host_imports) "$n_provided_imports imports provided, expected $n_expected_imports"
+    externs_vec = WasmPtrVec(map(map_to_extern, host_imports))
 
     wasm_instance_ptr = wasm_instance_new(store.wasm_store_ptr, wasm_module.wasm_module_ptr, externs_vec, C_NULL)
-    wasm_instance_ptr == C_NULL && error("Failed to create WASM instance")
+    @assert wasm_instance_ptr != C_NULL "Failed to create WASM instance"
     WasmInstance(wasm_instance_ptr, wasm_module)
 end
 
@@ -412,22 +382,17 @@ function (wasm_export::WasmExport)(args...)
         error("Wrong number of argument to function $(wasm_export.name), expected $params_arity, got $provided_params")
     end
 
-    converted_args = collect(map(arg -> convert(wasm_val_t, arg), args))
-    params_vec = wasm_val_vec_t(0, C_NULL)
+    converted_args = collect(wasm_val_t, map(arg -> convert(wasm_val_t, arg), args))
+    params_vec = WasmVec(converted_args)
 
-    args_ptr = Base.pointer(converted_args)
-    GC.@preserve converted_args args_ptr wasm_val_vec_new(params_vec, params_arity, args_ptr)
-
-    results_vec = wasm_val_vec_t(0, C_NULL)
-    wasm_val_vec_new_uninitialized(results_vec, result_arity)
+    default_val = wasm_val_t(tuple(zeros(UInt8, 16)...))
+    results_vec = WasmVec([default_val for _ in 1:result_arity])
 
     wasm_func_call(extern_as_func, params_vec, results_vec)
 
     results = map(1:result_arity) do i
         Base.unsafe_load(results_vec.data, i)
     end
-    wasm_val_vec_delete(params_vec)
-    wasm_val_vec_delete(results_vec)
 
     results
 end
@@ -437,17 +402,13 @@ mutable struct WasmExports
     wasm_exports::Vector{WasmExport}
 
     function WasmExports(wasm_instance::WasmInstance)
-        exports = wasm_exporttype_vec_t(0, C_NULL)
+        exports = WasmPtrVec(wasm_exporttype_t)
         wasm_module_exports(wasm_instance.wasm_module.wasm_module_ptr, exports)
-        externs = wasm_extern_vec_t(0, C_NULL)
+        externs = WasmPtrVec(wasm_extern_t)
         wasm_instance_exports(wasm_instance.wasm_instance_ptr, externs)
-        @assert exports.size == externs.size
+        @assert length(exports) == length(externs)
 
-        exports_vector = map(1:exports.size) do i
-            wasm_export_ptr = Base.unsafe_load(exports.data, i)
-            wasm_extern_ptr = Base.unsafe_load(externs.data, i)
-            WasmExport(wasm_export_ptr, wasm_extern_ptr, wasm_instance)
-        end
+        exports_vector = map(a -> WasmExport(a..., wasm_instance), zip(exports, externs))
 
         new(wasm_instance, exports_vector)
     end
