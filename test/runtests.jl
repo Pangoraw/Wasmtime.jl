@@ -1,6 +1,8 @@
 using Wasmer
 using Test
 
+include("./import_export.jl")
+
 @testset "wat2wasm" begin
     exception = try
         wat"invalid wasm code"
