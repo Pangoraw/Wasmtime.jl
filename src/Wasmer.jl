@@ -28,7 +28,7 @@ function check_wasmer_error()
     end
 end
 
-import Base: unsafe_convert
+# TODO: a wrapper around wasm_XXX_vec_t
 Base.unsafe_convert(::Type{Ptr{wasm_byte_vec_t}}, vec::wasm_byte_vec_t) =
     Base.unsafe_convert(Ptr{wasm_byte_vec_t}, Base.pointer_from_objref(vec))
 Base.unsafe_convert(::Type{Ptr{wasm_extern_vec_t}}, vec::wasm_extern_vec_t) =
@@ -37,6 +37,10 @@ Base.unsafe_convert(::Type{Ptr{wasm_exporttype_vec_t}}, vec::wasm_exporttype_vec
     Base.unsafe_convert(Ptr{wasm_exporttype_vec_t}, Base.pointer_from_objref(vec))
 Base.unsafe_convert(::Type{Ptr{wasm_val_vec_t}}, vec::wasm_val_vec_t) =
     Base.unsafe_convert(Ptr{wasm_val_vec_t}, Base.pointer_from_objref(vec))
+Base.unsafe_convert(::Type{Ptr{wasm_importtype_vec_t}}, vec::wasm_importtype_vec_t) =
+    Base.unsafe_convert(Ptr{wasm_importtype_vec_t}, Base.pointer_from_objref(vec))
+Base.unsafe_convert(::Type{Ptr{wasm_valtype_vec_t}}, vec::wasm_valtype_vec_t) =
+    Base.unsafe_convert(Ptr{wasm_valtype_vec_t}, Base.pointer_from_objref(vec))
 
 LibWasmer.wasm_byte_vec_t(str::AbstractString) =
     wasm_byte_vec_t(length(str), Base.unsafe_convert(Cstring, Base.unsafe_wrap(Vector{UInt8}, str)))
@@ -149,6 +153,102 @@ function WasmModule(store::WasmStore, wasm_byte_vec::wasm_byte_vec_t)
     WasmModule(wasm_module_ptr)
 end
 
+julia_type_to_valtype(julia_type)::Ptr{wasm_valtype_t} =
+    julia_type_to_valkind(julia_type) |> wasm_valtype_new
+
+function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
+    parameter_arity = length(input_types)
+    result_arity = return_type == Nothing ? 0 : 1
+
+    params_vec = wasm_valtype_vec_t(0, C_NULL);
+    if parameter_arity != 0
+        val_arr = map(julia_type_to_valkind, inputs_types)
+        GC.@preserve val_arr wasm_valtype_vec_new(params_vec, parameter_arity, pointer(val_arr))
+    else
+        wasm_valtype_vec_new_empty(params_vec);
+    end
+
+    results_vec = wasm_valtype_vec_t(0, C_NULL);
+    if result_arity != 0
+        val_ptr = julia_type_to_valtype(return_type);
+        val_arr = Ptr{wasm_valtype_t}[val_ptr]
+        GC.@preserve val_arr wasm_valtype_vec_new(results_vec, 1, pointer(val_arr))
+    else
+        wasm_valtype_vec_new_empty(results_vec)
+    end
+
+    func_type = wasm_functype_new(params_vec, results_vec)
+    @assert func_type != C_NULL "Failed to create functype"
+
+    function jl_side_host(args::Ptr{wasm_val_vec_t}, results::Ptr{wasm_val_vec_t})::Ptr{wasm_trap_t}
+        # TODO: support passing the arguments
+        res = func()
+        wasm_res = Ref(convert(wasm_val_t, res))
+        data_ptr = unsafe_load(results).data
+        wasm_val_copy(data_ptr, Base.pointer_from_objref(wasm_res))
+
+        C_NULL
+    end
+
+    # Create a pointer to jl_side_host(args, results)
+    func_ptr = Base.@cfunction($jl_side_host, Ptr{wasm_trap_t}, (Ptr{wasm_val_vec_t}, Ptr{wasm_val_vec_t}))
+
+    host_func = wasm_func_new(store.wasm_store_ptr, func_type, func_ptr)
+    wasm_functype_delete(func_type)
+
+    host_func
+end
+
+function name_vec_ptr_to_str(name_vec_ptr::Ptr{wasm_name_t})
+    @assert name_vec_ptr != C_NULL "Failed to convert wasm_name" 
+    name_vec = Base.unsafe_load(name_vec_ptr)
+    name = unsafe_string(name_vec.data, name_vec.size)
+    wasm_name_delete(name_vec_ptr)
+
+    name
+end
+
+struct WasmImport
+    wasm_importtype_ptr::Ptr{wasm_importtype_t}
+    extern_kind::wasm_externkind_enum
+    import_module::String
+    name::String
+
+    function WasmImport(wasm_importtype_ptr::Ptr{wasm_importtype_t})
+        name_vec_ptr = wasm_importtype_name(wasm_importtype_ptr)
+        name = name_vec_ptr_to_str(name_vec_ptr)
+
+        import_module_ptr = wasm_importtype_module(wasm_importtype_ptr)
+        import_module = name_vec_ptr_to_str(import_module_ptr)
+
+        externtype_ptr = wasm_importtype_type(wasm_importtype_ptr)
+        extern_kind = wasm_externkind_enum(wasm_externtype_kind(externtype_ptr))
+
+        new(wasm_importtype_ptr, extern_kind, import_module, name)
+    end
+end
+
+struct WasmImports
+    wasm_module::WasmModule
+    wasm_imports::Vector{WasmImport}
+
+    function WasmImports(wasm_module::WasmModule)
+        wasm_imports_vec = wasm_importtype_vec_t(0, C_NULL)
+        wasm_module_imports(wasm_module.wasm_module_ptr, wasm_imports_vec)
+
+        wasm_imports = map(1:wasm_imports_vec.size) do i
+            wasm_importtype_ptr = Base.unsafe_load(wasm_imports_vec.data, i)
+            WasmImport(wasm_importtype_ptr)
+        end
+
+        new(wasm_module, wasm_imports)
+    end
+end
+imports(wasm_module::WasmModule) = WasmImports(wasm_module)
+
+map_to_extern(extern_func::Ptr{wasm_func_t}) = wasm_func_as_extern(extern_func)
+map_to_extern(other) = error("Type $(typeof(other)) is not supported")
+
 mutable struct WasmInstance
     wasm_instance_ptr::Ptr{wasm_instance_t}
     wasm_module::WasmModule
@@ -158,8 +258,19 @@ mutable struct WasmInstance
     end
 end
 function WasmInstance(store::WasmStore, wasm_module::WasmModule)
-    imports = wasm_extern_vec_t(0, C_NULL)
+    module_imports = imports(wasm_module)
+    n_expected_imports = length(module_imports.wasm_imports)
+    @assert n_expected_imports == 0 "No imports provided, expected $n_expected_imports"
+
     wasm_instance_ptr = wasm_instance_new(store.wasm_store_ptr, wasm_module.wasm_module_ptr, imports, C_NULL)
+    wasm_instance_ptr == C_NULL && error("Failed to create WASM instance")
+    WasmInstance(wasm_instance_ptr, wasm_module)
+end
+function WasmInstance(store::WasmStore, wasm_module::WasmModule, imports::Vector{T}) where T
+    imports_as_externs = map(map_to_extern, imports)
+    externs_vec = wasm_extern_vec_t(length(imports_as_externs), Base.pointer(imports_as_externs)) 
+
+    wasm_instance_ptr = wasm_instance_new(store.wasm_store_ptr, wasm_module.wasm_module_ptr, externs_vec, C_NULL)
     wasm_instance_ptr == C_NULL && error("Failed to create WASM instance")
     WasmInstance(wasm_instance_ptr, wasm_module)
 end
@@ -201,19 +312,48 @@ function WasmFloat64(i::Int64)
     val[]
 end
 
+function julia_type_to_valkind(julia_type::Type)::wasm_valkind_enum
+    if julia_type == Int32
+        WASM_I32
+    elseif julia_type == Int64
+        WASM_I64
+    elseif julia_type == Float32
+        WASM_F32
+    elseif julia_type == Float64
+        WASM_F64
+    else
+        error("No corresponding valkind for type $julia_type")
+    end
+end
+
+function valkind_to_julia_type(valkind::wasm_valkind_enum)
+    if valkind == WASM_I32
+        Int32
+    elseif valkind == WASM_I64
+        Int64
+    elseif valkind == WASM_F32
+        Float32
+    elseif valkind == WASM_F64
+        Float64
+    else
+        error("No corresponding type for kind $valkind")
+    end
+end
+
 Base.convert(::Type{wasm_val_t}, i::Int32) = WasmInt32(i)
 Base.convert(::Type{wasm_val_t}, i::Int64) = WasmInt64(i)
 Base.convert(::Type{wasm_val_t}, f::Float32) = WasmFloat32(f)
 Base.convert(::Type{wasm_val_t}, f::Float64) = WasmFloat64(f)
 
-Base.convert(::Type{Int32}, wasm_val::wasm_val_t) = 
-    wasm_val.kind == WASM_I32 ? wasm_val.of.i32 : error("Cannot convert value of type $(wasm_valkind_enum(wasm_val.kind)) to Int32")
-Base.convert(::Type{Int64}, wasm_val::wasm_val_t) =
-    wasm_val.kind == WASM_I64 ? wasm_val.of.i64 : error("Cannot convert value of type $(wasm_valkind_enum(wasm_val.kind)) to Int64")
-Base.convert(::Type{Float32}, wasm_val::wasm_val_t) = 
-    wasm_val.kind == WASM_I32 ? wasm_val.of.f32 : error("Cannot convert value of type $(wasm_valkind_enum(wasm_val.kind)) to Float32")
-Base.convert(::Type{Float64}, wasm_val::wasm_val_t) =
-    wasm_val.kind == WASM_I64 ? wasm_val.of.f64 : error("Cannot convert value of type $(wasm_valkind_enum(wasm_val.kind)) to Float64")
+Base.convert(::Type{wasm_val_t}, val::wasm_val_t) = val
+function Base.convert(julia_type, wasm_val::wasm_val_t)
+    valkind = julia_type_to_valkind(julia_type)
+    @assert valkind == wasm_val.kind "Cannot convert a value of kind $(wasm_val.kind) to corresponding kind $valkind"
+    ctag = Ref(wasm_val.of)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_2}, r)
+    jl_val = GC.@preserve ctag unsafe_load(Ptr{julia_type}(ptr))
+    jl_val
+end
 
 function Base.show(io::IO, wasm_val::wasm_val_t)
     name, maybe_val = if wasm_val.kind == WASM_I32
