@@ -3,19 +3,27 @@ mutable struct WasmVec{T, S} <: AbstractVector{S}
     size::Csize_t
     data::Ptr{S}
 end
+
+# We most likely don't own the underlying values, so we shouldn't call wasm_XXX_vec_delete()
+wasm_vec_delete(::WasmVec{T, S}) where {T <: Ptr, S} = Libc.free(wasm_vec.data)
+wasm_vec_delete(wasm_vec::WasmVec{T, S}) where {T, S} = _get_delete_function(T)(wasm_vec)
+
 function WasmVec{T, S}(vector::Vector{S}=S[]) where {T, S}
-    elsize = sizeof(S)
     vec_size = length(vector)
 
-    dest_ptr = Base.unsafe_convert(Ptr{S}, Libc.malloc(vec_size * elsize))
+    wasm_vec = WasmVec{T, S}(0, C_NULL)
+    vec_uninitialized = _get_uninitialized_function(T)
+
+    vec_uninitialized(wasm_vec, vec_size)
     src_ptr = pointer(vector)
 
-    GC.@preserve vector unsafe_copyto!(dest_ptr, src_ptr, vec_size)
+    GC.@preserve vector unsafe_copyto!(wasm_vec.data, src_ptr, vec_size)
 
-    finalizer(WasmVec{T, S}(Csize_t(vec_size), dest_ptr)) do vec
-        Libc.free(vec.data)
-    end
+    finalizer(wasm_vec_delete, wasm_vec)
 end
+
+_get_delete_function(T) = getproperty(LibWasmer, Symbol(string(nameof(T))[1:end-6] * "_vec_delete"))
+_get_uninitialized_function(T) = getproperty(LibWasmer, Symbol(string(nameof(T))[1:end-6] * "_vec_new_uninitialized"))
 
 WasmVec(base_type::Type) = WasmVec(base_type[])
 function WasmVec(vec::Vector{S}) where S
