@@ -19,12 +19,15 @@ function WasmInstance(store::WasmStore, wasm_module::WasmModule)
     @assert wasm_instance_ptr != C_NULL "Failed to create WASM instance"
     WasmInstance(wasm_instance_ptr, wasm_module)
 end
-function WasmInstance(store::WasmStore, wasm_module::WasmModule, host_imports::Vector{T}) where T
+function WasmInstance(store::WasmStore, wasm_module::WasmModule, host_imports) where T
+    externs_vec = WasmPtrVec(map(map_to_extern, host_imports))
+    WasmInstance(store::WasmStore, wasm_module::WasmModule, externs_vec::WasmVec{wasm_extern_vec_t, Ptr{wasm_extern_t}})
+end
+function WasmInstance(store::WasmStore, wasm_module::WasmModule, externs_vec::WasmVec{wasm_extern_vec_t, Ptr{wasm_extern_t}})
     module_imports = imports(wasm_module)
     n_expected_imports = length(module_imports.wasm_imports)
-    n_provided_imports = length(host_imports)
-    @assert n_expected_imports == length(host_imports) "$n_provided_imports imports provided, expected $n_expected_imports"
-    externs_vec = WasmPtrVec(map(map_to_extern, host_imports))
+    n_provided_imports = length(externs_vec)
+    @assert n_expected_imports == n_provided_imports "$n_provided_imports imports provided, expected $n_expected_imports"
 
     wasm_instance_ptr = wasm_instance_new(store.wasm_store_ptr, wasm_module.wasm_module_ptr, externs_vec, C_NULL)
     @assert wasm_instance_ptr != C_NULL "Failed to create WASM instance"
@@ -47,13 +50,22 @@ mutable struct WasmExport
         wasm_extern_ptr::Ptr{wasm_extern_t},
         wasm_instance::WasmInstance,
     )
-        name_vec_ptr = wasm_exporttype_name(wasm_export_ptr)
+        owned_wasm_export_ptr = wasm_exporttype_copy(wasm_export_ptr)
+        @assert owned_wasm_export_ptr != C_NULL "Failed to copy WASM export"
+
+        owned_wasm_extern_ptr = wasm_extern_copy(wasm_extern_ptr)
+        @assert owned_wasm_extern_ptr != C_NULL "Failed to copy WASM extern"
+
+        name_vec_ptr = wasm_exporttype_name(owned_wasm_export_ptr)
         name_vec = Base.unsafe_load(name_vec_ptr)
         name = unsafe_string(name_vec.data, name_vec.size)
         wasm_name_delete(name_vec_ptr)
 
         # TODO: Extract type here
-        new(wasm_export_ptr, wasm_extern_ptr, wasm_instance, name)
+        finalizer(new(owned_wasm_export_ptr,owned_wasm_extern_ptr, wasm_instance, name)) do wasm_export
+            wasm_exporttype_delete(wasm_export.wasm_export_ptr)
+            wasm_extern_delete(wasm_export.wasm_extern_ptr)
+        end
     end
 end
 
@@ -64,7 +76,7 @@ function (wasm_export::WasmExport)(args...)
     @assert wasm_externkind == WASM_EXTERN_FUNC "Called export '$(wasm_export.name)' is not a function"
 
     extern_as_func = wasm_extern_as_func(wasm_export.wasm_extern_ptr)
-    extern_as_func == C_NULL && error("Can not use export $(wasm_export.name) as a function")
+    @assert extern_as_func != C_NULL "Can not use export $(wasm_export.name) as a function"
     
     params_arity = wasm_func_param_arity(extern_as_func)
     result_arity = wasm_func_result_arity(extern_as_func)
@@ -82,11 +94,7 @@ function (wasm_export::WasmExport)(args...)
 
     wasm_func_call(extern_as_func, params_vec, results_vec)
 
-    results = map(1:result_arity) do i
-        Base.unsafe_load(results_vec.data, i)
-    end
-
-    results
+    collect(results_vec)
 end
 
 mutable struct WasmExports

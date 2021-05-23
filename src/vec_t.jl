@@ -4,8 +4,6 @@ mutable struct WasmVec{T, S} <: AbstractVector{S}
     data::Ptr{S}
 end
 
-# We most likely don't own the underlying values, so we shouldn't call wasm_XXX_vec_delete()
-wasm_vec_delete(::WasmVec{T, S}) where {T <: Ptr, S} = Libc.free(wasm_vec.data)
 wasm_vec_delete(wasm_vec::WasmVec{T, S}) where {T, S} = _get_delete_function(T)(wasm_vec)
 
 function WasmVec{T, S}(vector::Vector{S}=S[]) where {T, S}
@@ -37,6 +35,8 @@ function WasmPtrVec(vec::Vector{Ptr{S}}) where S
     WasmVec{vec_type, Ptr{S}}(vec)
 end
 
+_get_wasm_vec_name(::Type{Cchar}) = wasm_byte_vec_t
+_get_wasm_vec_name(::Type{UInt8}) = wasm_byte_vec_t
 function _get_wasm_vec_name(type::Type)
     @assert parentmodule(type) == LibWasmer "$type should be a LibWasmer type"
     type_name = string(nameof(type)) # "wasm_XXX_t"
@@ -68,5 +68,5 @@ Base.unsafe_convert(::Type{Ptr{T}}, vec::WasmVec{T, S}) where {T, S} =
     Base.unsafe_convert(Ptr{T}, pointer_from_objref(vec))
 Base.unsafe_convert(::Type{Ptr{S}}, vec::WasmVec{T, S}) where {T, S} = vec.data
 
-const WasmByteVec = WasmVec{wasm_byte_vec_t, wasm_byte_t}
+const WasmByteVec = WasmVec{wasm_byte_vec_t, UInt8}
 const WasmName = WasmByteVec
