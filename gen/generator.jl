@@ -28,6 +28,8 @@ function rewrite!(e::Expr)
       e.args[1].args[2] = nothing
     elseif eq.head === :(=) && eq.args[1] === :wasm_name && eq.args[2] === :wasm_byte_vec
       e.args[1].args[2] = :wasm_byte_vec_t
+    elseif eq.head === :(=) && eq.args[1] === :wasm_byte_t
+      e.args[1].args[2] = :UInt8
     end
 
     return e

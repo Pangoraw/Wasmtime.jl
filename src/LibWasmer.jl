@@ -17,7 +17,7 @@ const float32_t = Cfloat
 
 const float64_t = Cdouble
 
-const wasm_byte_t = byte_t
+const wasm_byte_t = UInt8
 
 mutable struct wasm_byte_vec_t
     size::Csize_t
