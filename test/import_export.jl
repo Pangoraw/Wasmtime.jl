@@ -22,7 +22,7 @@
             # return values
             Int32(100)
         end
-        func_type, func_ptr = Wasmer.WasmFunc(store, jl_side, Int32, ())
+        func_type = Wasmer.WasmFunc(store, jl_side, Int32, ())
 
         instance = WasmInstance(store, wasm_module, [func_type])
         mod_exports = Wasmer.exports(instance)
@@ -34,7 +34,6 @@
         @test res[1].of.i32 == 100
         @test semaphore[] == 42
 
-        func_type, func_ptr
     end
 
     @testset "WASI import" begin

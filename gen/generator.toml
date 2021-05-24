@@ -2,7 +2,7 @@
 # it could also be an expression as long as `Meta.parse` can parse this string successfully.
 # basically, it should be the `expression` in the following code:
 # ccall((function_name, expression), returntype, (argtype1, ...), argvalue1, ...)
-library_name = "libwasmer"
+library_name = "libwasm"
 
 # this entry allows you to specify different library names for different headers.
 # in the following example:
@@ -12,13 +12,13 @@ library_name = "libwasmer"
 library_names = {}
 
 # output file path relative to the working directory
-output_file_path = "../src/LibWasmer.jl"
+output_file_path = "../src/LibWasm.jl"
 
 # if this entry is not empty, the generator will print the code below to the `output_file_path`.
 # module module_name
 # 
 # end # module
-module_name = "LibWasmer"
+module_name = "LibWasm"
 
 # if this entry is not empty, the generator will print the code below to the `output_file_path`.
 # using jll_pkg_name
@@ -30,7 +30,7 @@ jll_pkg_extra = []
 
 # identifiers that starts with the string listed in this entry will be exported.
 export_symbol_prefixes = [
-  "libwasmer",
+  "libwasm",
   "wasm_",
   "WASM_",
 ]

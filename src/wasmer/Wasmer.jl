@@ -1,18 +1,15 @@
 module Wasmer
 
-include("./LibWasmer.jl")
-using .LibWasmer
+include("../base.jl")
 
-include("./vec_t.jl")
-include("./val_t.jl")
+const libwasmer = libwasm
 
-include("./wasmer.jl")
+include("./wat2wasm.jl")
 include("./engine.jl")
-include("./module.jl")
-include("./instance.jl")
+include("./wasi.jl")
 
 export wat2wasm, @wat_str, WasmInstance, WasmExports, exports,
     WasmEngine, WasmConfig, WasmStore, WasmModule, imports, WasmImports,
     WasmFunc
 
-end
+end # module Wasmer

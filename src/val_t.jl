@@ -73,7 +73,7 @@ function Base.convert(julia_type, wasm_val::wasm_val_t)
     valkind = julia_type_to_valkind(julia_type)
     @assert valkind == wasm_val.kind "Cannot convert a value of kind $(wasm_val.kind) to corresponding kind $valkind"
     ctag = Ref(wasm_val.of)
-    ptr = Base.unsafe_convert(Ptr{LibWasmer.__JL_Ctag_2}, ctag)
+    ptr = Base.unsafe_convert(Ptr{LibWasm.__JL_Ctag_2}, ctag)
     jl_val = GC.@preserve ctag unsafe_load(Ptr{julia_type}(ptr))
     jl_val
 end

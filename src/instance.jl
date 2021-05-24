@@ -4,7 +4,7 @@ map_to_extern(other) = error("Type $(typeof(other)) is not supported")
 mutable struct WasmInstance
     wasm_instance_ptr::Ptr{wasm_instance_t}
     wasm_module::WasmModule
-    
+
     WasmInstance(wasm_instance_ptr::Ptr{wasm_instance_t}, wasm_module::WasmModule) = finalizer(new(wasm_instance_ptr, wasm_module)) do wasm_instance
         wasm_instance_delete(wasm_instance.wasm_instance_ptr)
     end
@@ -19,11 +19,15 @@ function WasmInstance(store::WasmStore, wasm_module::WasmModule)
     @assert wasm_instance_ptr != C_NULL "Failed to create WASM instance"
     WasmInstance(wasm_instance_ptr, wasm_module)
 end
-function WasmInstance(store::WasmStore, wasm_module::WasmModule, host_imports) where T
+function WasmInstance(store::WasmStore, wasm_module::WasmModule, host_imports)
     externs_vec = WasmPtrVec(map(map_to_extern, host_imports))
-    WasmInstance(store::WasmStore, wasm_module::WasmModule, externs_vec::WasmVec{wasm_extern_vec_t, Ptr{wasm_extern_t}})
+    WasmInstance(
+        store,
+        wasm_module,
+        externs_vec,
+    )
 end
-function WasmInstance(store::WasmStore, wasm_module::WasmModule, externs_vec::WasmVec{wasm_extern_vec_t, Ptr{wasm_extern_t}})
+function WasmInstance(store::WasmStore, wasm_module::WasmModule, externs_vec::WasmVec{wasm_extern_vec_t,Ptr{wasm_extern_t}})
     module_imports = imports(wasm_module)
     n_expected_imports = length(module_imports.wasm_imports)
     n_provided_imports = length(externs_vec)
@@ -62,7 +66,7 @@ mutable struct WasmExport
         wasm_name_delete(name_vec_ptr)
 
         # TODO: Extract type here
-        finalizer(new(owned_wasm_export_ptr,owned_wasm_extern_ptr, wasm_instance, name)) do wasm_export
+        finalizer(new(owned_wasm_export_ptr, owned_wasm_extern_ptr, wasm_instance, name)) do wasm_export
             wasm_exporttype_delete(wasm_export.wasm_export_ptr)
             wasm_extern_delete(wasm_export.wasm_extern_ptr)
         end

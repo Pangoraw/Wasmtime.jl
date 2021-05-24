@@ -1,4 +1,4 @@
-using Wasmer
+using WASM.Wasmer
 using Test
 
 include("./import_export.jl")

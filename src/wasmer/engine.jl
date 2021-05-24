@@ -47,7 +47,7 @@ struct WasmConfig
     end
 end
 
-mutable struct WasmEngine
+mutable struct WasmEngine <: AbstractWasmEngine
     wasm_engine_ptr::Ptr{wasm_engine_t}
     config::WasmConfig
 
@@ -61,21 +61,12 @@ function WasmEngine(config::WasmConfig)
     @ccall libwasmer.wasm_config_set_compiler(wasm_config_ptr::Ptr{wasm_config_t}, config.compiler::Cint)::Cvoid
     @ccall libwasmer.wasm_config_set_engine(wasm_config_ptr::Ptr{wasm_config_t}, config.engine::Cint)::Cvoid
 
-    wasm_engine_ptr = LibWasmer.wasm_engine_new_with_config(wasm_config_ptr)
+    wasm_engine_ptr = wasm_engine_new_with_config(wasm_config_ptr)
     WasmEngine(wasm_engine_ptr, config)
 end
 WasmEngine(;compiler=first_available_compiler(), engine=first_available_engine()) =
     WasmEngine(WasmConfig(;compiler, engine))
 
+Base.unsafe_convert(::Type{Ptr{wasm_engine_t}}, wasm_engine::WasmEngine) = wasm_engine.wasm_engine_ptr
+
 Base.show(io::IO, engine::WasmEngine) = print(io, "WasmEngine($(engine.config.compiler), $(engine.config.engine))")
-
-mutable struct WasmStore
-    wasm_store_ptr::Ptr{wasm_store_t}
-
-    WasmStore(wasm_store_ptr::Ptr{wasm_store_t}) = finalizer(new(wasm_store_ptr)) do wasm_store
-        wasm_store_delete(wasm_store.wasm_store_ptr)
-    end
-end
-WasmStore(wasm_engine::WasmEngine) = WasmStore(wasm_store_new(wasm_engine.wasm_engine_ptr))
-
-Base.show(io::IO, ::WasmStore) = print(io, "WasmStore()")

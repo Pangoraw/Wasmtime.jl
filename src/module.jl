@@ -6,7 +6,7 @@ mutable struct WasmModule
     end
 end
 function WasmModule(store::WasmStore, wasm_byte_vec::WasmByteVec)
-    wasm_module_ptr = wasm_module_new(store.wasm_store_ptr, wasm_byte_vec)
+    wasm_module_ptr = wasm_module_new(store, wasm_byte_vec)
     wasm_module_ptr == C_NULL && error("Failed to create wasm module")
 
     WasmModule(wasm_module_ptr)
@@ -14,7 +14,9 @@ end
 
 function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
     params_vec = WasmPtrVec(collect(Ptr{wasm_valtype_t}, map(julia_type_to_valtype, input_types)))
-    results_vec = WasmPtrVec([julia_type_to_valtype(return_type)])
+    results_vec = return_type == Nothing ?
+        WasmPtrVec(wasm_valtype_t) :
+        WasmPtrVec([julia_type_to_valtype(return_type)])
 
     func_type = wasm_functype_new(params_vec, results_vec)
     @assert func_type != C_NULL "Failed to create functype"
@@ -32,10 +34,13 @@ function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
     # Create a pointer to jl_side_host(args, results)
     func_ptr = Base.@cfunction($jl_side_host, Ptr{wasm_trap_t}, (Ptr{wasm_val_vec_t}, Ptr{wasm_val_vec_t}))
 
-    host_func = wasm_func_new(store.wasm_store_ptr, func_type, func_ptr)
+    host_func = wasm_func_new(store, func_type, func_ptr)
     wasm_functype_delete(func_type)
 
-    host_func, func_ptr
+    # Keep a reference to func_ptr in the store, so that it not garbage collected
+    add_extern_func!(store, func_ptr)
+
+    host_func
 end
 
 function name_vec_ptr_to_str(name_vec_ptr::Ptr{wasm_name_t})
@@ -67,6 +72,8 @@ struct WasmImport
     end
 end
 
+Base.show(io::IO, wasm_import::WasmImport) = print(io, "WasmImport($(wasm_import.extern_kind), \"$(wasm_import.import_module)\", \"$(wasm_import.name)\")")
+
 struct WasmImports
     wasm_module::WasmModule
     wasm_imports::Vector{WasmImport}
@@ -80,3 +87,9 @@ struct WasmImports
     end
 end
 imports(wasm_module::WasmModule) = WasmImports(wasm_module)
+
+function Base.show(io::IO, wasm_imports::WasmImports)
+    print(io::IO, "WasmImports(")
+    show(io, wasm_imports.wasm_imports)
+    print(")")
+end
