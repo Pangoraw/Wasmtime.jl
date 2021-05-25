@@ -1,0 +1,9 @@
+[[libwasmtime]]
+arch = "x86_64"
+git-tree-sha1 = "4f5c6108588f68f543dfca219309f924fcc31e62"
+libc = "glibc"
+os = "linux"
+
+    [[libwasmtime.download]]
+    sha256 = "dae43840f44fde35a14e283256a2ad904d4d172df5cbbc234a6bef5b6a146b59"
+    url = "https://github.com/bytecodealliance/wasmtime/releases/download/v0.26.1/wasmtime-v0.26.1-x86_64-linux-c-api.tar.xz"
