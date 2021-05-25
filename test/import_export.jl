@@ -12,7 +12,7 @@
 
         @test_throws Any instance = WasmInstance(store, wasm_module)
 
-        wasm_imports = Wasmer.imports(wasm_module)
+        wasm_imports = backend.imports(wasm_module)
 
         semaphore = Ref(32)
         function jl_side()
@@ -22,15 +22,15 @@
             # return values
             Int32(100)
         end
-        func_type = Wasmer.WasmFunc(store, jl_side, Int32, ())
+        func_type = backend.WasmFunc(store, jl_side, Int32, ())
 
         instance = WasmInstance(store, wasm_module, [func_type])
-        mod_exports = Wasmer.exports(instance)
+        mod_exports = backend.exports(instance)
 
         guest_function = mod_exports.guest_function
         res = guest_function()
 
-        @test res[1].kind == Wasmer.WASM_I32
+        @test res[1].kind == backend.WASM_I32
         @test res[1].of.i32 == 100
         @test semaphore[] == 42
 
@@ -71,11 +71,11 @@
         store = WasmStore(engine)
         wasm_module = WasmModule(store, wasm_code)
 
-        imports = Wasmer.imports(wasm_module)
+        imports = backend.imports(wasm_module)
 
         @test length(imports.wasm_imports) == 1
         @test imports.wasm_imports[1].import_module == "wasi_unstable"
         @test imports.wasm_imports[1].name == "fd_write"
-        @test imports.wasm_imports[1].extern_kind == Wasmer.WASM_EXTERN_FUNC
+        @test imports.wasm_imports[1].extern_kind == backend.WASM_EXTERN_FUNC
     end
 end

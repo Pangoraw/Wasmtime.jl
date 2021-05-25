@@ -1,12 +1,16 @@
 module WASM
 
-iswasmer = true
-
 include("./base.jl")
+
+iswasmer = occursin("wasmer", libwasm)
+iswasmtime = occursin("wasmtime", libwasm)
 
 if iswasmer
     include("./wasmer/Wasmer.jl")
-    using .Wasmer
+end
+
+if iswasmtime
+    include("./wasmtime/Wasmtime.jl")
 end
 
 end # module WASM

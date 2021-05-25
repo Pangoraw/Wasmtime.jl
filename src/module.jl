@@ -1,9 +1,7 @@
 mutable struct WasmModule
     wasm_module_ptr::Ptr{wasm_module_t}
 
-    WasmModule(module_ptr::Ptr{wasm_module_t}) = finalizer(new(module_ptr)) do wasm_module
-        wasm_module_delete(wasm_module.wasm_module_ptr)
-    end
+    WasmModule(module_ptr::Ptr{wasm_module_t}) = finalizer(wasm_module_delete, new(module_ptr))
 end
 function WasmModule(store::WasmStore, wasm_byte_vec::WasmByteVec)
     wasm_module_ptr = wasm_module_new(store, wasm_byte_vec)
@@ -11,6 +9,8 @@ function WasmModule(store::WasmStore, wasm_byte_vec::WasmByteVec)
 
     WasmModule(wasm_module_ptr)
 end
+
+Base.unsafe_convert(::Type{Ptr{wasm_module_t}}, wasm_module::WasmModule) = wasm_module.wasm_module_ptr
 
 function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
     params_vec = WasmPtrVec(collect(Ptr{wasm_valtype_t}, map(julia_type_to_valtype, input_types)))
@@ -79,14 +79,18 @@ struct WasmImports
     wasm_imports::Vector{WasmImport}
 
     function WasmImports(wasm_module::WasmModule)
-        wasm_imports_vec = WasmPtrVec(wasm_importtype_t)
-        wasm_module_imports(wasm_module.wasm_module_ptr, wasm_imports_vec)
+        wasm_imports_vec = imports_as_wasm_vec(wasm_module)
         wasm_imports = map(WasmImport, wasm_imports_vec)
 
         new(wasm_module, wasm_imports)
     end
 end
 imports(wasm_module::WasmModule) = WasmImports(wasm_module)
+function imports_as_wasm_vec(wasm_module)
+    wasm_imports_vec = WasmPtrVec(wasm_importtype_t)
+    wasm_module_imports(wasm_module, wasm_imports_vec)
+    wasm_imports_vec
+end
 
 function Base.show(io::IO, wasm_imports::WasmImports)
     print(io::IO, "WasmImports(")

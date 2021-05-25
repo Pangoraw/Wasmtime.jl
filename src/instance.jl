@@ -15,6 +15,8 @@ function WasmInstance(store::WasmStore, wasm_module::WasmModule)
     @assert n_expected_imports == 0 "No imports provided, expected $n_expected_imports"
 
     empty_imports = WasmPtrVec(wasm_extern_t)
+    # TODO: pass trap here to get better error messages
+    # See `wasmtime/wasi.jl` for an example
     wasm_instance_ptr = wasm_instance_new(store.wasm_store_ptr, wasm_module.wasm_module_ptr, empty_imports, C_NULL)
     @assert wasm_instance_ptr != C_NULL "Failed to create WASM instance"
     WasmInstance(wasm_instance_ptr, wasm_module)
@@ -27,7 +29,7 @@ function WasmInstance(store::WasmStore, wasm_module::WasmModule, host_imports)
         externs_vec,
     )
 end
-function WasmInstance(store::WasmStore, wasm_module::WasmModule, externs_vec::WasmVec{wasm_extern_vec_t,Ptr{wasm_extern_t}})
+function WasmInstance(store::WasmStore, wasm_module::WasmModule, externs_vec::WasmVec{wasm_extern_vec_t, Ptr{wasm_extern_t}})
     module_imports = imports(wasm_module)
     n_expected_imports = length(module_imports.wasm_imports)
     n_provided_imports = length(externs_vec)

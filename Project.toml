@@ -1,19 +1,21 @@
-name = "Wasmer"
+name = "WASM"
 uuid = "f519113a-1485-4b12-af44-dbf9b5a2f6b4"
 authors = ["Pangoraw <paul.berg@etu.utc.fr>"]
 version = "0.1.0"
 
 [deps]
 CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
-Clang = "40e3b903-d033-50b4-a0cc-940c62c95e31"
 
 [compat]
-Clang = "0.13"
 CEnum = "0.4"
 julia = "1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Clang = "40e3b903-d033-50b4-a0cc-940c62c95e31"
+Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 
 [targets]
-test = ["Test"]
+test = ["Test", "Downloads"]
+gen = ["Clang"]
