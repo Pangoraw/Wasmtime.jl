@@ -43,6 +43,49 @@ function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
     host_func
 end
 
+struct WasmFuncRef
+    wasm_func_ptr::Ptr{wasm_func_t}
+end
+
+Base.unsafe_convert(::Type{Ptr{wasm_func_t}}, wasm_func::WasmFuncRef) = wasm_func.wasm_func_ptr
+
+function (wasm_func::WasmFuncRef)(args...)
+    params_arity = wasm_func_param_arity(wasm_func)
+    result_arity = wasm_func_result_arity(wasm_func)
+
+    provided_params = length(args)
+    if params_arity != provided_params
+        error("Wrong number of argument to function, expected $params_arity, got $provided_params")
+    end
+
+    converted_args = collect(wasm_val_t, map(arg -> convert(wasm_val_t, arg), args))
+    params_vec = WasmVec(converted_args)
+
+    default_val = wasm_val_t(tuple(zeros(UInt8, 16)...))
+    results_vec = WasmVec([default_val for _ in 1:result_arity])
+
+    wasm_func_call(wasm_func, params_vec, results_vec)
+
+    collect(results_vec)
+end
+
+mutable struct WasmExtern
+    wasm_extern_ptr::Ptr{wasm_extern_t}
+end
+
+Base.unsafe_convert(::Type{Ptr{wasm_extern_t}}, wasm_extern::WasmExtern) = wasm_extern.wasm_extern_ptr
+function Base.show(io::IO, wasm_extern::WasmExtern)
+    kind = wasm_extern_kind(wasm_extern) |> wasm_externkind_enum
+    print(io, "WasmExtern($kind)")
+end
+
+function (wasm_extern::WasmExtern)(args...)
+    extern_as_func = wasm_extern_as_func(wasm_extern)
+    @assert extern_as_func != C_NULL "Can not use extern $wasm_extern as a function"
+
+    WasmFuncRef(extern_as_func)(args...)
+end
+
 function name_vec_ptr_to_str(name_vec_ptr::Ptr{wasm_name_t})
     @assert name_vec_ptr != C_NULL "Failed to convert wasm_name" 
     name_vec = Base.unsafe_load(name_vec_ptr)

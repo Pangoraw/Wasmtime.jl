@@ -13,4 +13,4 @@ function WasmEngine()
 end
 
 Base.unsafe_convert(::Type{Ptr{wasm_engine_t}}, wasm_engine::WasmEngine) = wasm_engine.wasm_engine_ptr
-Base.show(io::IO, ::WasmEngine) = "WasmEngine"
+Base.show(io::IO, ::WasmEngine) = print(io, "WasmEngine()")
