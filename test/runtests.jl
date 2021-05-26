@@ -1,4 +1,4 @@
-using WASM.Wasmtime
+using WasmRuntime.Wasmtime
 using Test
 
 backend = isdefined(@__MODULE__, :Wasmer) ? Wasmer : Wasmtime

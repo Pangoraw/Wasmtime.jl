@@ -1,6 +1,4 @@
 @testset "WasmTable" begin
-    using WASM.Wasmtime
-    using Test
     wasm_code = wat"""
     (module
         (import "js" "tbl" (table 2 anyfunc))

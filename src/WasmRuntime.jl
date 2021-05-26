@@ -1,4 +1,4 @@
-module WASM
+module WasmRuntime
 
 include("./base.jl")
 
@@ -13,4 +13,4 @@ if iswasmtime
     include("./wasmtime/Wasmtime.jl")
 end
 
-end # module WASM
+end # module WasmRuntime

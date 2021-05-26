@@ -1,4 +1,4 @@
-# WASM.jl
+# WasmRuntime.jl
 
 A package to run WASM binary blobs.
 
