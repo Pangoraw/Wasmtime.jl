@@ -12,13 +12,12 @@ function throw_error_message(error::Ptr{wasmtime_error_t})
     error(error_msg)
 end
 
-wat2wasm(str::AbstractString) =
-    wat2wasm(WasmByteVec(collect(wasm_byte_t, str)))
+wat2wasm(str::AbstractString) = wat2wasm(WasmByteVec(collect(wasm_byte_t, str)))
 function wat2wasm(wat::WasmByteVec)
     out = WasmByteVec()
     error = @ccall libwasmtime.wasmtime_wat2wasm(
         wat::Ptr{wasm_byte_vec_t},
-        out::Ptr{wasm_byte_vec_t}
+        out::Ptr{wasm_byte_vec_t},
     )::Ptr{wasmtime_error_t}
     if error != C_NULL
         throw_error_message(error)

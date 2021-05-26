@@ -1,7 +1,8 @@
 mutable struct WasmModule
     wasm_module_ptr::Ptr{wasm_module_t}
 
-    WasmModule(module_ptr::Ptr{wasm_module_t}) = finalizer(wasm_module_delete, new(module_ptr))
+    WasmModule(module_ptr::Ptr{wasm_module_t}) =
+        finalizer(wasm_module_delete, new(module_ptr))
 end
 function WasmModule(store::WasmStore, wasm_byte_vec::WasmByteVec)
     wasm_module_ptr = wasm_module_new(store, wasm_byte_vec)
@@ -10,18 +11,23 @@ function WasmModule(store::WasmStore, wasm_byte_vec::WasmByteVec)
     WasmModule(wasm_module_ptr)
 end
 
-Base.unsafe_convert(::Type{Ptr{wasm_module_t}}, wasm_module::WasmModule) = wasm_module.wasm_module_ptr
+Base.unsafe_convert(::Type{Ptr{wasm_module_t}}, wasm_module::WasmModule) =
+    wasm_module.wasm_module_ptr
 
 function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
-    params_vec = WasmPtrVec(collect(Ptr{wasm_valtype_t}, map(julia_type_to_valtype, input_types)))
-    results_vec = return_type == Nothing ?
-        WasmPtrVec(wasm_valtype_t) :
+    params_vec =
+        WasmPtrVec(collect(Ptr{wasm_valtype_t}, map(julia_type_to_valtype, input_types)))
+    results_vec =
+        return_type == Nothing ? WasmPtrVec(wasm_valtype_t) :
         WasmPtrVec([julia_type_to_valtype(return_type)])
 
     func_type = wasm_functype_new(params_vec, results_vec)
     @assert func_type != C_NULL "Failed to create functype"
 
-    function jl_side_host(args::Ptr{wasm_val_vec_t}, results::Ptr{wasm_val_vec_t})::Ptr{wasm_trap_t}
+    function jl_side_host(
+        args::Ptr{wasm_val_vec_t},
+        results::Ptr{wasm_val_vec_t},
+    )::Ptr{wasm_trap_t}
         # TODO: support passing the arguments
         res = func()
         wasm_res = Ref(convert(wasm_val_t, res))
@@ -32,7 +38,11 @@ function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
     end
 
     # Create a pointer to jl_side_host(args, results)
-    func_ptr = Base.@cfunction($jl_side_host, Ptr{wasm_trap_t}, (Ptr{wasm_val_vec_t}, Ptr{wasm_val_vec_t}))
+    func_ptr = Base.@cfunction(
+        $jl_side_host,
+        Ptr{wasm_trap_t},
+        (Ptr{wasm_val_vec_t}, Ptr{wasm_val_vec_t})
+    )
 
     host_func = wasm_func_new(store, func_type, func_ptr)
     wasm_functype_delete(func_type)
@@ -47,7 +57,8 @@ struct WasmFuncRef
     wasm_func_ptr::Ptr{wasm_func_t}
 end
 
-Base.unsafe_convert(::Type{Ptr{wasm_func_t}}, wasm_func::WasmFuncRef) = wasm_func.wasm_func_ptr
+Base.unsafe_convert(::Type{Ptr{wasm_func_t}}, wasm_func::WasmFuncRef) =
+    wasm_func.wasm_func_ptr
 
 function (wasm_func::WasmFuncRef)(args...)
     params_arity = wasm_func_param_arity(wasm_func)
@@ -55,14 +66,16 @@ function (wasm_func::WasmFuncRef)(args...)
 
     provided_params = length(args)
     if params_arity != provided_params
-        error("Wrong number of argument to function, expected $params_arity, got $provided_params")
+        error(
+            "Wrong number of argument to function, expected $params_arity, got $provided_params",
+        )
     end
 
     converted_args = collect(wasm_val_t, map(arg -> convert(wasm_val_t, arg), args))
     params_vec = WasmVec(converted_args)
 
     default_val = wasm_val_t(tuple(zeros(UInt8, 16)...))
-    results_vec = WasmVec([default_val for _ in 1:result_arity])
+    results_vec = WasmVec([default_val for _ = 1:result_arity])
 
     wasm_func_call(wasm_func, params_vec, results_vec)
 
@@ -73,7 +86,8 @@ mutable struct WasmExtern
     wasm_extern_ptr::Ptr{wasm_extern_t}
 end
 
-Base.unsafe_convert(::Type{Ptr{wasm_extern_t}}, wasm_extern::WasmExtern) = wasm_extern.wasm_extern_ptr
+Base.unsafe_convert(::Type{Ptr{wasm_extern_t}}, wasm_extern::WasmExtern) =
+    wasm_extern.wasm_extern_ptr
 function Base.show(io::IO, wasm_extern::WasmExtern)
     kind = wasm_extern_kind(wasm_extern) |> wasm_externkind_enum
     print(io, "WasmExtern($kind)")
@@ -87,7 +101,7 @@ function (wasm_extern::WasmExtern)(args...)
 end
 
 function name_vec_ptr_to_str(name_vec_ptr::Ptr{wasm_name_t})
-    @assert name_vec_ptr != C_NULL "Failed to convert wasm_name" 
+    @assert name_vec_ptr != C_NULL "Failed to convert wasm_name"
     name_vec = Base.unsafe_load(name_vec_ptr)
     name = unsafe_string(name_vec.data, name_vec.size)
     wasm_name_delete(name_vec_ptr)
@@ -115,7 +129,10 @@ struct WasmImport
     end
 end
 
-Base.show(io::IO, wasm_import::WasmImport) = print(io, "WasmImport($(wasm_import.extern_kind), \"$(wasm_import.import_module)\", \"$(wasm_import.name)\")")
+Base.show(io::IO, wasm_import::WasmImport) = print(
+    io,
+    "WasmImport($(wasm_import.extern_kind), \"$(wasm_import.import_module)\", \"$(wasm_import.name)\")",
+)
 
 struct WasmImports
     wasm_module::WasmModule

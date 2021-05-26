@@ -2,32 +2,32 @@ julia_type_to_valtype(julia_type)::Ptr{wasm_valtype_t} =
     julia_type_to_valkind(julia_type) |> wasm_valtype_new
 
 # TODO: the other value types
-function WasmInt32(i::Int32) 
-    val = Ref(wasm_val_t(tuple((zero(UInt8) for _ in 1:16)...)))
+function WasmInt32(i::Int32)
+    val = Ref(wasm_val_t(tuple((zero(UInt8) for _ = 1:16)...)))
     ptr = Base.unsafe_convert(Ptr{wasm_val_t}, Base.pointer_from_objref(val))
     ptr.kind = WASM_I32
     ptr.of.i32 = i
 
     val[]
 end
-function WasmInt64(i::Int64) 
-    val = Ref(wasm_val_t(tuple((zero(UInt8) for _ in 1:16)...)))
+function WasmInt64(i::Int64)
+    val = Ref(wasm_val_t(tuple((zero(UInt8) for _ = 1:16)...)))
     ptr = Base.unsafe_convert(Ptr{wasm_val_t}, Base.pointer_from_objref(val))
     ptr.kind = WASM_I64
     ptr.of.i64 = i
 
     val[]
 end
-function WasmFloat32(i::Int32) 
-    val = Ref(wasm_val_t(tuple((zero(UInt8) for _ in 1:16)...)))
+function WasmFloat32(i::Int32)
+    val = Ref(wasm_val_t(tuple((zero(UInt8) for _ = 1:16)...)))
     ptr = Base.unsafe_convert(Ptr{wasm_val_t}, Base.pointer_from_objref(val))
     ptr.kind = WASM_F32
     ptr.of.f32 = i
 
     val[]
 end
-function WasmFloat64(i::Int64) 
-    val = Ref(wasm_val_t(tuple((zero(UInt8) for _ in 1:16)...)))
+function WasmFloat64(i::Int64)
+    val = Ref(wasm_val_t(tuple((zero(UInt8) for _ = 1:16)...)))
     ptr = Base.unsafe_convert(Ptr{wasm_val_t}, Base.pointer_from_objref(val))
     ptr.kind = WASM_F64
     ptr.of.f64 = i

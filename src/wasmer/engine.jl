@@ -31,14 +31,14 @@ function first_available_engine()
     @assert engine_idx !== nothing "No available engine"
     engines[engine_idx]
 end
-    
+
 struct WasmConfig
     compiler::Compiler
     engine::Engine
 
     function WasmConfig(;
-        compiler::Compiler=first_available_compiler(),
-        engine::Engine=first_available_engine()
+        compiler::Compiler = first_available_compiler(),
+        engine::Engine = first_available_engine(),
     )
         @assert wasmer_is_compiler_available(compiler) "Compiler $compiler is not available"
         @assert wasmer_is_engine_available(engine) "Engine $engine is available"
@@ -51,22 +51,31 @@ mutable struct WasmEngine <: AbstractWasmEngine
     wasm_engine_ptr::Ptr{wasm_engine_t}
     config::WasmConfig
 
-    WasmEngine(wasm_engine_ptr::Ptr{wasm_engine_t}, config::WasmConfig) = finalizer(new(wasm_engine_ptr, config)) do wasm_engine
-        wasm_engine_delete(wasm_engine.wasm_engine_ptr)
-    end
+    WasmEngine(wasm_engine_ptr::Ptr{wasm_engine_t}, config::WasmConfig) =
+        finalizer(new(wasm_engine_ptr, config)) do wasm_engine
+            wasm_engine_delete(wasm_engine.wasm_engine_ptr)
+        end
 end
 function WasmEngine(config::WasmConfig)
     wasm_config_ptr = wasm_config_new()
 
-    @ccall libwasmer.wasm_config_set_compiler(wasm_config_ptr::Ptr{wasm_config_t}, config.compiler::Cint)::Cvoid
-    @ccall libwasmer.wasm_config_set_engine(wasm_config_ptr::Ptr{wasm_config_t}, config.engine::Cint)::Cvoid
+    @ccall libwasmer.wasm_config_set_compiler(
+        wasm_config_ptr::Ptr{wasm_config_t},
+        config.compiler::Cint,
+    )::Cvoid
+    @ccall libwasmer.wasm_config_set_engine(
+        wasm_config_ptr::Ptr{wasm_config_t},
+        config.engine::Cint,
+    )::Cvoid
 
     wasm_engine_ptr = wasm_engine_new_with_config(wasm_config_ptr)
     WasmEngine(wasm_engine_ptr, config)
 end
-WasmEngine(;compiler=first_available_compiler(), engine=first_available_engine()) =
-    WasmEngine(WasmConfig(;compiler, engine))
+WasmEngine(; compiler = first_available_compiler(), engine = first_available_engine()) =
+    WasmEngine(WasmConfig(; compiler, engine))
 
-Base.unsafe_convert(::Type{Ptr{wasm_engine_t}}, wasm_engine::WasmEngine) = wasm_engine.wasm_engine_ptr
+Base.unsafe_convert(::Type{Ptr{wasm_engine_t}}, wasm_engine::WasmEngine) =
+    wasm_engine.wasm_engine_ptr
 
-Base.show(io::IO, engine::WasmEngine) = print(io, "WasmEngine($(engine.config.compiler), $(engine.config.engine))")
+Base.show(io::IO, engine::WasmEngine) =
+    print(io, "WasmEngine($(engine.config.compiler), $(engine.config.engine))")
