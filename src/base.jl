@@ -10,7 +10,8 @@ include("./store.jl")
 include("./module.jl")
 include("./instance.jl")
 
-export WasmStore,
+export WasmMemory,
+    WasmStore,
     WasmInstance,
     WasmExports,
     exports,

@@ -14,6 +14,24 @@ end
 Base.unsafe_convert(::Type{Ptr{wasm_module_t}}, wasm_module::WasmModule) =
     wasm_module.wasm_module_ptr
 
+mutable struct WasmMemory
+    wasm_memory_ptr::Ptr{wasm_memory_t}
+end
+function WasmMemory(store::WasmStore, limits::Pair{UInt32,UInt32})
+    limits = wasm_limits_t(limits...)
+    memory_type = GC.@preserve limits wasm_memorytype_new(pointer_from_objref(limits))
+    @assert memory_type != C_NULL "Failed to create memory type"
+
+    wasm_memory_ptr = wasm_memory_new(store, memory_type)
+    @assert wasm_memory_ptr != C_NULL "Failed to create memory"
+
+    WasmMemory(wasm_memory_ptr)
+end
+
+map_to_extern(mem::WasmMemory) = wasm_memory_as_extern(mem)
+Base.show(io::IO, wasm_memory::WasmMemory) = print(io, "WasmMemory()")
+Base.unsafe_convert(::Type{Ptr{wasm_memory_t}}, wasm_memory::WasmMemory) = wasm_memory.wasm_memory_ptr
+
 function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
     params_vec =
         WasmPtrVec(collect(Ptr{wasm_valtype_t}, map(julia_type_to_valtype, input_types)))
@@ -66,9 +84,7 @@ function (wasm_func::WasmFuncRef)(args...)
 
     provided_params = length(args)
     if params_arity != provided_params
-        error(
-            "Wrong number of argument to function, expected $params_arity, got $provided_params",
-        )
+        error("Wrong number of argument to function, expected $params_arity, got $provided_params",)
     end
 
     converted_args = collect(wasm_val_t, map(arg -> convert(wasm_val_t, arg), args))
@@ -129,6 +145,7 @@ struct WasmImport
     end
 end
 
+Base.unsafe_convert(::Type{Ptr{wasm_importtype_t}}, wasm_import::WasmImport) = wasm_import.wasm_importtype_ptr
 Base.show(io::IO, wasm_import::WasmImport) = print(
     io,
     "WasmImport($(wasm_import.extern_kind), \"$(wasm_import.import_module)\", \"$(wasm_import.name)\")",
@@ -140,7 +157,7 @@ struct WasmImports
 
     function WasmImports(wasm_module::WasmModule)
         wasm_imports_vec = imports_as_wasm_vec(wasm_module)
-        wasm_imports = map(WasmImport, wasm_imports_vec)
+        wasm_imports = map(imp -> wasm_importtype_copy(imp) |> WasmImport, wasm_imports_vec)
 
         new(wasm_module, wasm_imports)
     end
