@@ -18,19 +18,19 @@ function WasmInt64(i::Int64)
 
     val[]
 end
-function WasmFloat32(i::Int32)
+function WasmFloat32(f::Float32)
     val = Ref(wasm_val_t(tuple((zero(UInt8) for _ = 1:16)...)))
     ptr = Base.unsafe_convert(Ptr{wasm_val_t}, Base.pointer_from_objref(val))
     ptr.kind = WASM_F32
-    ptr.of.f32 = i
+    ptr.of.f32 = f
 
     val[]
 end
-function WasmFloat64(i::Int64)
+function WasmFloat64(f::Float64)
     val = Ref(wasm_val_t(tuple((zero(UInt8) for _ = 1:16)...)))
     ptr = Base.unsafe_convert(Ptr{wasm_val_t}, Base.pointer_from_objref(val))
     ptr.kind = WASM_F64
-    ptr.of.f64 = i
+    ptr.of.f64 = f
 
     val[]
 end
