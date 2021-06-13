@@ -30,15 +30,19 @@ Base.unsafe_convert(::Type{Ptr{wasm_table_t}}, wasm_table::WasmTable) =
 Base.IndexStyle(::Type{WasmTable}) = IndexLinear()
 Base.size(table::WasmTable) = (wasm_table_size(table) |> Int,)
 function Base.getindex(table::WasmTable, i::Int)
-    wasm_func_ptr = Ref(Ptr{wasm_func_t}())
+    wasm_val_ref = Ref(wasm_val_t(tuple((zero(UInt8) for _ = 1:16)...)))
 
     index = i - 1
-    res = @ccall libwasmtime.wasmtime_funcref_table_get(
+
+    wasmtime_context = @ccall libwasmtime.wasmtime_store_context(table.store::Ptr{wasm_store_t})::Ptr{Nothing}
+    res = @ccall libwasmtime.wasmtime_table_get(
+        wasmtime_context::Ptr{Nothing},
         table::Ptr{wasm_table_t},
         index::Cint,
-        pointer_from_objref(wasm_func_ptr)::Ptr{Ptr{wasm_func_t}},
+        wasm_val_ref::Ptr{wasm_val_t},
     )::Bool
     @assert res "Failed to access index $i"
+    @assert wasm_val_ref[].kind == WASM_FUNCREF
 
     WasmFuncRef(wasm_func_ptr[])
 end
