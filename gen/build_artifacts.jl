@@ -3,8 +3,19 @@ using GitHub
 using Pkg.Artifacts
 using Base.BinaryPlatforms
 using Tar
+using SHA
 
 const gh_auth = GitHub.AnonymousAuth()
+
+version(release::Release) = try
+    VersionNumber(release.tag_name)
+catch
+    v"0.0.0"
+end
+
+latest_release(repo; auth) = reduce(releases(repo; auth)[1]) do releaseA, releaseB
+    version(releaseA) > version(releaseB) ? releaseA : releaseB
+end
 
 function make_artifacts(dir)
     release = latest_release("bytecodealliance/wasmtime"; auth=gh_auth)
@@ -33,8 +44,9 @@ function make_artifacts(dir)
             run(`tar -xvf $archive_location -C $artifact_dir`)
         end
 
-        # TODO: replace with real hash
-        download_hash = archive_artifact(artifact_hash, joinpath(@__DIR__, "build.tar.xz"))
+        download_hash = open(archive_location, "r") do f
+            bytes2hex(sha256(f))
+        end
         bind_artifact!(artifacts_toml, "libwasmtime", artifact_hash; platform, force=true, download_info=[
             (download_url, download_hash)
         ])
