@@ -1,15 +1,19 @@
-# WasmRuntime.jl
+# Wasmtime.jl
 
-A package to run WASM binary blobs.
+A Julia wrapper around the wasmtime runtime to run Web Assembly blobs and libraries from Julia.
 
-## Backends
+## Examples
 
-There is currently two supported runtime backend for running WASM blobs:
-  * [Wasmtime](https://github.com/bytecodealliance/wasmtime)
-  * [Wasmer](https://github.com/wasmerio/wasmer)
+```julia
+julia> using Wasmtime
 
-The backends are able to share most of the code since they all implement the [WASM engine c-api](https://github.com/WebAssembly/wasm-c-api).
+julia> wat"(module)"
+```
 
 ## Usage
 
-See the [`test` folder](https://github.com/Pangoraw/WASM.jl/tree/main/test) for usage examples.
+Wastime exposes two C api. The first one is the common Web Assembly runtime C api with names starting with `Wasm` in Wasmtime.jl.
+The second one is a wasmtime specific api which provides more functionality like WASI imports, fine-grained configuration
+of the store features like fuel.
+
+See the [`test` folder](https://github.com/Pangoraw/Wasmtime.jl/tree/main/test) for usage examples.

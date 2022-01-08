@@ -21,9 +21,9 @@ function WasmVec{T,S}(vector::Vector{S} = S[]) where {T,S}
 end
 
 _get_delete_function(T) =
-    getproperty(LibWasm, Symbol(string(nameof(T))[1:end-6] * "_vec_delete"))
+    getproperty(LibWasmtime, Symbol(string(nameof(T))[1:end-6] * "_vec_delete"))
 _get_uninitialized_function(T) =
-    getproperty(LibWasm, Symbol(string(nameof(T))[1:end-6] * "_vec_new_uninitialized"))
+    getproperty(LibWasmtime, Symbol(string(nameof(T))[1:end-6] * "_vec_new_uninitialized"))
 
 WasmVec(base_type::Type) = WasmVec(base_type[])
 function WasmVec(vec::Vector{S}) where {S}
@@ -40,10 +40,10 @@ end
 _get_wasm_vec_name(::Type{Cchar}) = wasm_byte_vec_t
 _get_wasm_vec_name(::Type{UInt8}) = wasm_byte_vec_t
 function _get_wasm_vec_name(type::Type)
-    @assert parentmodule(type) == LibWasm "$type should be a LibWasm type"
+    @assert parentmodule(type) == LibWasmtime "$type should be a LibWasm type"
     type_name = string(nameof(type)) # "wasm_XXX_t"
     vec_type_sym = Symbol(replace(type_name, r"_t$" => "_vec_t")) # :wasm_XXX_vec_t
-    getproperty(LibWasm, vec_type_sym)
+    getproperty(LibWasmtime, vec_type_sym)
 end
 
 Base.IndexStyle(::Type{WasmVec}) = IndexLinear()

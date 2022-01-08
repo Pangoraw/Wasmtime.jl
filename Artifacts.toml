@@ -1,9 +1,9 @@
 [[libwasmtime]]
 arch = "x86_64"
-git-tree-sha1 = "ce6b9201784101d7af45e5ac601c008be3f6e5ed"
+git-tree-sha1 = "ff23fbddd464e8ec6a130495610fee6b303dc5f6"
 libc = "glibc"
 os = "linux"
 
     [[libwasmtime.download]]
-    sha256 = "1ebc4f49fe80f775318d60720a44bc9157049ec0c63f01b7dc25483413f80b56"
-    url = "https://github.com/bytecodealliance/wasmtime/releases/download/v0.28.0/wasmtime-v0.28.0-x86_64-linux-c-api.tar.xz"
+    sha256 = "86eada8b26d1a501bf95417c5aa894cedb0c60c1b9c8f8d1dc4b0cfd9c77875d"
+    url = "https://github.com/bytecodealliance/wasmtime/releases/download/v0.33.0/wasmtime-v0.33.0-x86_64-linux-c-api.tar.xz"

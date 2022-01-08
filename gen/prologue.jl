@@ -3,7 +3,7 @@
 # if something is to be changed.
 
 using Pkg.Artifacts
-using Base.BinaryPlatforms
+using Pkg.BinaryPlatforms
 
 tripletnolibc(platform) = replace(triplet(platform), "-gnu" => "")
 wasmtime_folder_name(platform) =
@@ -22,4 +22,6 @@ function get_libwasmtime_location()
     )
 end
 
-const libwasm = get(ENV, "LIBWASM_LOCATION", get_libwasmtime_location())
+const libwasmtime_env_key = "LIBWASMTIME_LOCATION"
+const libwasmtime = haskey(ENV, libwasmtime_env_key) ?
+    ENV[libwasmtime_env_key] : get_libwasmtime_location()

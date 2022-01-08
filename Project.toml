@@ -1,6 +1,6 @@
-name = "WasmRuntime"
+name = "Wasmtime"
 uuid = "f519113a-1485-4b12-af44-dbf9b5a2f6b4"
-authors = ["Pangoraw <paul.berg@etu.utc.fr>"]
+authors = ["Paul Berg <naydex.mc+github@gmail.com>"]
 version = "0.1.0"
 
 [deps]
@@ -14,7 +14,6 @@ julia = "1"
 [extras]
 Clang = "40e3b903-d033-50b4-a0cc-940c62c95e31"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
-Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 GitHub = "bc5e4493-9b4d-5f90-b8aa-2b2bcaad7a26"
 

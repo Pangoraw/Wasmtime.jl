@@ -67,9 +67,10 @@ Base.unsafe_convert(::Type{Ptr{wasm_instance_t}}, instance::WasmInstance) =
     instance.wasm_instance_ptr
 
 # TODO: One for each exporttype_type?
-mutable struct WasmExport
+mutable struct WasmExport <: AbstractWasmExport
     # The wasm_exporttype_t refers to the export on the module side
     wasm_export_ptr::Ptr{wasm_exporttype_t}
+
     # The wasm_extern_t refers to the export on the instance side
     wasm_extern::WasmExtern
     wasm_instance::WasmInstance
@@ -115,33 +116,15 @@ function (wasm_export::WasmExport)(args...)
     wasm_export.wasm_extern(args...)
 end
 
-mutable struct WasmExports
-    wasm_instance::WasmInstance
-    wasm_exports::Vector{WasmExport}
 
-    function WasmExports(wasm_instance::WasmInstance)
-        exports = WasmPtrVec(wasm_exporttype_t)
-        wasm_module_exports(wasm_instance.wasm_module.wasm_module_ptr, exports)
-        externs = WasmPtrVec(wasm_extern_t)
-        wasm_instance_exports(wasm_instance.wasm_instance_ptr, externs)
-        @assert length(exports) == length(externs)
+function exports(wasm_instance::WasmInstance)
+    exports = WasmPtrVec(wasm_exporttype_t)
+    wasm_module_exports(wasm_instance.wasm_module.wasm_module_ptr, exports)
+    externs = WasmPtrVec(wasm_extern_t)
+    wasm_instance_exports(wasm_instance.wasm_instance_ptr, externs)
+    @assert length(exports) == length(externs)
 
-        exports_vector = map(a -> WasmExport(a..., wasm_instance), zip(exports, externs))
+    exports_vector = map(a -> WasmExport(a..., wasm_instance), zip(exports, externs))
 
-        new(wasm_instance, exports_vector)
-    end
-end
-exports(instance::WasmInstance) = WasmExports(instance)
-
-function Base.getproperty(wasm_exports::WasmExports, f::Symbol)
-    if f ∈ fieldnames(WasmExports)
-        return getfield(wasm_exports, f)
-    end
-
-    lookup_name = string(f)
-    export_index =
-        findfirst(wasm_export -> wasm_export.name == lookup_name, wasm_exports.wasm_exports)
-    @assert export_index !== nothing "Export $f not found"
-
-    wasm_exports.wasm_exports[export_index]
+    WasmExports{WasmInstance,WasmExport}(wasm_instance, exports_vector)
 end

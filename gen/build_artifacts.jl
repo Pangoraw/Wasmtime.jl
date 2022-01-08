@@ -53,4 +53,4 @@ function make_artifacts(dir)
     end
 end
 
-main() = mktempdir(make_artifacts) 
+main() = mktempdir(make_artifacts)

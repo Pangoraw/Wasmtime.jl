@@ -9,13 +9,11 @@ using Downloads
             location,
         )
 
-        wasm_code = open(location, "r") do f
-            read(f)
-        end |> Wasmtime.WasmVec
+        wasm_code = open(read, location, "r") |> Wasmtime.WasmVec
 
         engine = WasmEngine()
-        store = WasmStore(engine)
-        wasm_module = WasmModule(store, wasm_code)
+        store = Wasmtime.WasmtimeStore(engine)
+        wasm_module = Wasmtime.WasmtimeModule(engine, wasm_code)
 
         msg = "Meuuuh!"
         stdin_path = joinpath(tmp_dir, "./stdin.txt")
@@ -27,21 +25,25 @@ using Downloads
         # TODO: Fix program name and argv's
         wasi_config = Wasmtime.WasiConfig("wasi_unstable")
         Wasmtime.wasi_config_inherit_stderr(wasi_config)
+
         Wasmtime.wasi_config_set_stdout_file(wasi_config, stdout_path)
         Wasmtime.wasi_config_set_stdin_file(wasi_config, stdin_path)
+
         Wasmtime.wasi_config_inherit_env(wasi_config)
+        Wasmtime.wasi_config_set_argv(wasi_config, 1, ["cowsay"])
 
-        wasi_env = Wasmtime.WasiEnv(store, wasi_config)
+        Wasmtime.set_wasi!(store, wasi_config)
 
-        wasi_imports = Wasmtime.wasi_get_imports(store, wasm_module, wasi_env)
+        linker = Wasmtime.WasmtimeLinker(engine)
+        Wasmtime.define_wasi!(linker)
 
-        instance = WasmInstance(store, wasm_module, wasi_imports)
+        instance = Wasmtime.WasmtimeInstance(linker, store, wasm_module)
         instance_exports = exports(instance)
         main_func = instance_exports._start
 
         main_func()
 
-        result = open(f -> read(f, String), stdout_path, "r")
+        result = read(stdout_path, String)
 
         expected = raw"""
          _________

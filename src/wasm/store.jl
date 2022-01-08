@@ -3,9 +3,7 @@ mutable struct WasmStore
     externs_func::Vector{Base.CFunction}
 
     WasmStore(wasm_store_ptr::Ptr{wasm_store_t}) =
-        finalizer(new(wasm_store_ptr, [])) do wasm_store
-            wasm_store_delete(wasm_store.wasm_store_ptr)
-        end
+        finalizer(wasm_store_delete, new(wasm_store_ptr, []))
 end
 WasmStore(wasm_engine::AbstractWasmEngine) = WasmStore(wasm_store_new(wasm_engine))
 
