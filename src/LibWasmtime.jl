@@ -26,7 +26,9 @@ function get_libwasmtime_location()
     )
 end
 
-const libwasmtime = get(ENV, "LIBWASM_LOCATION", get_libwasmtime_location())
+const libwasmtime_env_key = "LIBWASMTIME_LOCATION"
+const libwasmtime = haskey(ENV, libwasmtime_env_key) ?
+    ENV[libwasmtime_env_key] : get_libwasmtime_location()
 
 
 const byte_t = Cchar
@@ -1769,14 +1771,10 @@ const wasmtime_extern_union_t = wasmtime_extern_union
 
 mutable struct wasmtime_extern
     kind::wasmtime_extern_kind_t
-
-    _pad1::UInt8
-    _pad2::UInt16
-    _pad3::UInt32
-
+    var"##pad0#274"::NTuple{7, UInt8}
     of::wasmtime_extern_union_t
 
-    wasmtime_extern(kind, of) = new(kind, 0, 0, 0, of)
+    wasmtime_extern(kind, of) = new(kind, Tuple((zero(UInt8) for _ = 1:7)), of)
 end
 
 const wasmtime_extern_t = wasmtime_extern
@@ -1879,7 +1877,10 @@ const wasmtime_val_raw_t = wasmtime_val_raw
 
 mutable struct wasmtime_val
     kind::wasmtime_valkind_t
+    var"##pad0#275"::NTuple{7, UInt8}
     of::wasmtime_valunion_t
+
+    wasmtime_val(kind, of) = new(kind, Tuple((zero(UInt8) for _ = 1:7)), of)
 end
 
 const wasmtime_val_t = wasmtime_val
@@ -1987,13 +1988,7 @@ function wasmtime_instance_export_get(store, instance, name, name_len, item)
 end
 
 function wasmtime_instance_export_nth(store, instance, index, name, name_len, item)
-    ccall((:wasmtime_instance_export_nth, libwasmtime), Bool,
-          (Ptr{wasmtime_context_t},
-           Ptr{wasmtime_instance_t},
-           Csize_t,
-           Ptr{Cstring},
-           Ptr{Csize_t},
-           Ptr{wasmtime_extern_t}), store, instance, index, name, name_len, item)
+    ccall((:wasmtime_instance_export_nth, libwasmtime), Bool, (Ptr{wasmtime_context_t}, Ptr{wasmtime_instance_t}, Csize_t, Ptr{Cstring}, Ptr{Csize_t}, Ptr{wasmtime_extern_t}), store, instance, index, name, name_len, item)
 end
 
 mutable struct wasmtime_linker end
