@@ -1771,9 +1771,8 @@ const wasmtime_extern_union_t = wasmtime_extern_union
 
 mutable struct wasmtime_extern
     kind::wasmtime_extern_kind_t
-    var"##pad0#274"::NTuple{7, UInt8}
+    var"##pad0#278"::NTuple{7, UInt8}
     of::wasmtime_extern_union_t
-
     wasmtime_extern(kind, of) = new(kind, Tuple((zero(UInt8) for _ = 1:7)), of)
 end
 
@@ -1875,11 +1874,10 @@ end
 
 const wasmtime_val_raw_t = wasmtime_val_raw
 
-mutable struct wasmtime_val
+struct wasmtime_val
     kind::wasmtime_valkind_t
-    var"##pad0#275"::NTuple{7, UInt8}
+    var"##pad0#279"::NTuple{7, UInt8}
     of::wasmtime_valunion_t
-
     wasmtime_val(kind, of) = new(kind, Tuple((zero(UInt8) for _ = 1:7)), of)
 end
 
@@ -2245,7 +2243,7 @@ const WASMTIME_EXTERNREF = 6
 
 
 # exports
-const PREFIXES = ["libwasm", "wasmtime_", "wasm_", "WASM_", "wasi_"]
+const PREFIXES = ["libwasm", "wasmtime_", "wasm_", "WASM_", "WASMTIME_", "wasi_"]
 for name in names(@__MODULE__; all=true), prefix in PREFIXES
     if startswith(string(name), prefix)
         @eval export $name

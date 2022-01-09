@@ -66,6 +66,26 @@ mutable struct WasmtimeInstanceExport <: AbstractWasmExport
     name::String
 end
 
+function wasmtime_valkind_to_julia(valkind::wasmtime_valkind_t)::Type
+    if valkind == WASMTIME_I32
+        Int32
+    elseif valkind == WASMTIME_I64
+        Int64
+    elseif valkind == WASMTIME_F32
+        Float32
+    elseif valkind == WASMTIME_F64
+        Float64
+    elseif valkind == WASMTIME_FUNCREF
+        wasmtime_func_t
+    elseif valkind == WASMTIME_EXTERNREF
+        Ptr{wasmtime_externref_t}
+    elseif valkind == WASMTIME_V128
+        wasmtime_v128
+    else
+        error("Invalid value kind $type")
+    end
+end
+
 function (wasmtime_export::WasmtimeInstanceExport)(args...)
     extern = wasmtime_export.extern[]
     @assert extern.kind == WASM_EXTERN_FUNC "Expected an exported function but got type $(extern.kind)"
@@ -73,19 +93,59 @@ function (wasmtime_export::WasmtimeInstanceExport)(args...)
     func = Ref(extern.of.func)
     functype = wasmtime_func_type(wasmtime_export.wasmtime_instance.store, func)
 
-    wasm_params = wasm_functype_params(functype) |> Base.unsafe_load
-    wasm_results = wasm_functype_results(functype) |> Base.unsafe_load
+    wasm_params = Base.unsafe_convert(Ptr{WasmVec{wasm_valtype_vec_t,Ptr{wasm_valtype_t}}}, wasm_functype_params(functype)) |> Base.unsafe_load
+    wasm_results = Base.unsafe_convert(Ptr{WasmVec{wasm_valtype_vec_t,Ptr{wasm_valtype_t}}}, wasm_functype_results(functype)) |> Base.unsafe_load
 
-    # TODO
-    @assert wasm_params.size == 0 "Params are not implemented yet"
-    @assert wasm_results.size == 0 "Results are not implemented yet"
+    @assert length(args) == length(wasm_params) "Expected $(wasm_params.size) arguments but got $(length(args))"
+    params_kind = wasm_valtype_kind.(wasm_params)
 
-    @assert length(args) == wasm_params.size "Expected $(wasm_params.size) arguments but got $(length(args))"
+    wasmtime_params = wasmtime_val[]
+    for (i, (param, kind)) in enumerate(zip(args, params_kind))
+        jtype = typeof(param)
+        etype = wasmtime_valkind_to_julia(kind)
+        @assert jtype == etype "Parameter #$i is of type $jtype, expected $etype"
+
+        valunion = Ref{wasmtime_valunion}(wasmtime_valunion(Tuple(zero(UInt8) for _ in 1:16)))
+        ptr = Base.unsafe_convert(Ptr{wasmtime_valunion}, valunion)
+        GC.@preserve valunion ptr.i32 = etype(param)
+        push!(wasmtime_params, wasmtime_val(WASM_I32, valunion[]))
+    end
+
+    wasmtime_results = Vector{wasmtime_val}(undef, length(wasm_results))
 
     trap = Ref(Ptr{wasm_trap_t}())
-    @wt_check wasmtime_func_call(wasmtime_export.wasmtime_instance.store, func, C_NULL, 0, C_NULL, 0, trap)
+    @wt_check GC.@preserve wasmtime_params wasmtime_results wasmtime_func_call(
+        wasmtime_export.wasmtime_instance.store,
+        func,
+        pointer(wasmtime_params),
+        length(wasmtime_params),
+        pointer(wasmtime_results),
+        length(wasmtime_results),
+        trap
+    )
 
-    nothing
+    results = map(wasmtime_results) do result
+        if result.kind == WASMTIME_I32
+            result.of.i32
+        elseif result.kind == WASMTIME_I64
+            result.of.i64
+        elseif result.kind == WASMTIME_F32
+            result.of.f32
+        elseif result.kind == WASMTIME_F64
+            result.of.f64
+        elseif result.kind == WASMTIME_V128
+            result.of.v128
+        elseif result.kind == WASMTIME_FUNCREF
+            result.of.funcref
+        elseif result.kind == WASMTIME_EXTERNREF
+            result.of.externref
+        else
+            error("Unknown value kind $(result.kind)")
+        end
+    end
+
+    length(results) == 1 ?
+        first(results) : results
 end
 
 function exports(instance::WasmtimeInstance)

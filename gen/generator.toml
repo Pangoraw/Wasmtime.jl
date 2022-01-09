@@ -34,6 +34,7 @@ export_symbol_prefixes = [
   "wasmtime_",
   "wasm_",
   "WASM_",
+  "WASMTIME_",
   "wasi_",
 ]
 
@@ -103,7 +104,9 @@ auto_mutability_with_new = false
 # argument will trigger a crash, the reason is mutable structs are not stored inline within a `Vector`,
 # one should use `Ref{NTuple{n,mutable_type}}()` instead.
 # this is not convenient and that's where the `auto_mutability_blacklist` comes in.
-auto_mutability_blacklist = []
+auto_mutability_blacklist = [
+  "wasmtime_val",
+]
 
 # opposite to `auto_mutability_blacklist` and has a higher priority
 auto_mutability_whitelist = [
