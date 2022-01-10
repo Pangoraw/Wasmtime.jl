@@ -22,18 +22,23 @@ function make_artifacts(dir)
     release_version = VersionNumber(release.tag_name)
 
     platforms = [
+        Platform("aarch64", "linux"; libc="glibc"),
         Platform("x86_64", "linux"; libc="glibc"),
+        Platform("x86_64", "macos"),
+        Platform("aarch64", "macos"),
     ]
 
     tripletnolibc(platform) = replace(triplet(platform), "-gnu" => "")
     wasmtime_asset_name(platform) =
-        "wasmtime-v$release_version-$(tripletnolibc(platform))-c-api.tar.xz"
+       replace("wasmtime-v$release_version-$(tripletnolibc(platform))-c-api.tar.xz",
+	       "apple-darwin" => "macos")
     asset_names = wasmtime_asset_name.(platforms)
 
     assets = filter(asset -> asset["name"] ∈ asset_names, release.assets)
     artifacts_toml = joinpath(@__DIR__, "Artifacts.toml")
 
     for (platform, asset) in zip(platforms, assets)
+	@info "Downloading $(asset["browser_download_url"]) for $platform"
         archive_location = joinpath(dir, asset["name"])
         download_url = asset["browser_download_url"]
         Downloads.download(download_url, archive_location;
@@ -50,6 +55,7 @@ function make_artifacts(dir)
         bind_artifact!(artifacts_toml, "libwasmtime", artifact_hash; platform, force=true, download_info=[
             (download_url, download_hash)
         ])
+	@info "done $platform"
     end
 end
 

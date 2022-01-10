@@ -18,7 +18,7 @@ function get_libwasmtime_location()
     return joinpath(
         parent_path,
         child_folder,
-        "lib/libwasmtime.so"
+        "lib/libwasmtime"
     )
 end
 
