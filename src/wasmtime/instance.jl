@@ -66,6 +66,48 @@ mutable struct WasmtimeInstanceExport <: AbstractWasmExport
     name::String
 end
 
+"""
+    WasmtimeMemory(export::WasmtimeInstanceExport)
+
+A minimal wrapper around `wasmtime_memory_t`
+
+Example of how to access and write to it from a wasi instance:
+
+```julia
+instance = ...
+
+memory = WasmtimeMemory(exports(instance).memory)
+
+# Example of setting the memory.
+string_to_pass = "a very long string"
+for (i, c) in enumerate(string_to_pass)
+    mem[ptr + i] = c
+end
+```
+"""
+struct WasmtimeMemory <: AbstractVector{UInt8}
+    ptr::Ptr{UInt8}
+
+    mem::wasmtime_memory_t
+    exp::WasmtimeInstanceExport
+end
+function WasmtimeMemory(exp)
+    @assert exp.extern[].kind == WASMTIME_EXTERN_MEMORY "The given export is not a valid memory."
+
+    mem = Ref(exp.extern[].of.memory)
+    ptr = LibWasmtime.wasmtime_memory_data(exp.wasmtime_instance.store, mem)
+
+    WasmtimeMemory(ptr, mem[], exp)
+end
+
+Base.unsafe_convert(::Type{Ptr{wasmtime_memory_t}}, mem::WasmtimeMemory) =
+    Base.convert(Ptr{wasmtime_memory_t}, Base.pointer_from_objref(mem.mem))
+Base.size(mem::WasmtimeMemory) = (length(mem),)
+Base.length(mem::WasmtimeMemory) =
+    LibWasmtime.wasmtime_memory_data_size(mem.exp.wasmtime_instance.store, mem)
+Base.getindex(mem::WasmtimeMemory, i) = Base.unsafe_load(mem.ptr, i)
+Base.setindex!(mem::WasmtimeMemory, val, i) = Base.unsafe_store!(mem.ptr, val, i)
+
 function wasmtime_valkind_to_julia(valkind::wasmtime_valkind_t)::Type
     if valkind == WASMTIME_I32
         Int32
@@ -93,8 +135,16 @@ function (wasmtime_export::WasmtimeInstanceExport)(args...)
     func = Ref(extern.of.func)
     functype = wasmtime_func_type(wasmtime_export.wasmtime_instance.store, func)
 
-    wasm_params = Base.unsafe_convert(Ptr{WasmVec{wasm_valtype_vec_t,Ptr{wasm_valtype_t}}}, wasm_functype_params(functype)) |> Base.unsafe_load
-    wasm_results = Base.unsafe_convert(Ptr{WasmVec{wasm_valtype_vec_t,Ptr{wasm_valtype_t}}}, wasm_functype_results(functype)) |> Base.unsafe_load
+    wasm_params =
+        Base.unsafe_convert(
+            Ptr{WasmVec{wasm_valtype_vec_t,Ptr{wasm_valtype_t}}},
+            wasm_functype_params(functype),
+        ) |> Base.unsafe_load
+    wasm_results =
+        Base.unsafe_convert(
+            Ptr{WasmVec{wasm_valtype_vec_t,Ptr{wasm_valtype_t}}},
+            wasm_functype_results(functype),
+        ) |> Base.unsafe_load
 
     @assert length(args) == length(wasm_params) "Expected $(wasm_params.size) arguments but got $(length(args))"
     params_kind = wasm_valtype_kind.(wasm_params)
@@ -105,7 +155,8 @@ function (wasmtime_export::WasmtimeInstanceExport)(args...)
         etype = wasmtime_valkind_to_julia(kind)
         @assert jtype == etype "Parameter #$i is of type $jtype, expected $etype"
 
-        valunion = Ref{wasmtime_valunion}(wasmtime_valunion(Tuple(zero(UInt8) for _ in 1:16)))
+        valunion =
+            Ref{wasmtime_valunion}(wasmtime_valunion(Tuple(zero(UInt8) for _ = 1:16)))
         ptr = Base.unsafe_convert(Ptr{wasmtime_valunion}, valunion)
         GC.@preserve valunion ptr.i32 = etype(param)
         push!(wasmtime_params, wasmtime_val(WASM_I32, valunion[]))
@@ -121,7 +172,7 @@ function (wasmtime_export::WasmtimeInstanceExport)(args...)
         length(wasmtime_params),
         pointer(wasmtime_results),
         length(wasmtime_results),
-        trap
+        trap,
     )
 
     results = map(wasmtime_results) do result
@@ -144,8 +195,7 @@ function (wasmtime_export::WasmtimeInstanceExport)(args...)
         end
     end
 
-    length(results) == 1 ?
-        first(results) : results
+    length(results) == 1 ? first(results) : results
 end
 
 function exports(instance::WasmtimeInstance)
@@ -186,6 +236,9 @@ function exports(instance::WasmtimeInstance)
 
         WasmtimeInstanceExport(wasm_export_ptr, extern, instance, name)
     end
+    wasmtime_exports = Dict{Symbol,WasmtimeInstanceExport}(
+        Symbol(exp.name) => exp for exp in wasmtime_exports
+    )
 
     WasmExports(instance, wasmtime_exports)
 end

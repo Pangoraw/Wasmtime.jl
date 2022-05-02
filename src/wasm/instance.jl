@@ -125,6 +125,8 @@ function exports(wasm_instance::WasmInstance)
     @assert length(exports) == length(externs)
 
     exports_vector = map(a -> WasmExport(a..., wasm_instance), zip(exports, externs))
+    exports_dict =
+        Dict{Symbol,WasmExport}(Symbol(exp.name) => exp for exp in exports_vector)
 
-    WasmExports{WasmInstance,WasmExport}(wasm_instance, exports_vector)
+    WasmExports{WasmInstance,WasmExport}(wasm_instance, exports_dict)
 end

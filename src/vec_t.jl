@@ -30,6 +30,7 @@ function WasmVec(vec::Vector{S}) where {S}
     vec_type = _get_wasm_vec_name(S)
     WasmVec{vec_type,S}(vec)
 end
+WasmVec(vec::WasmVec) = vec
 
 WasmPtrVec(base_type::Type) = WasmPtrVec(Ptr{base_type}[])
 function WasmPtrVec(vec::Vector{Ptr{S}}) where {S}

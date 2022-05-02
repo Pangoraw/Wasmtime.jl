@@ -7,7 +7,15 @@ A Julia wrapper around the wasmtime runtime to run Web Assembly blobs and librar
 ```julia
 julia> using Wasmtime
 
-julia> wat"(module)"
+julia> bytes = wat"""
+        (module
+            (func $function (export "guest_function") (result i32) (i32.const 42)))
+       """;
+
+julia> instance = instantiate(bytes);
+
+julia> @wcall instance.guest_function()::Int32
+42
 ```
 
 ## Usage
