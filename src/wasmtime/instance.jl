@@ -86,7 +86,89 @@ function wasmtime_valkind_to_julia(valkind::wasmtime_valkind_t)::Type
     end
 end
 
-function (wasmtime_export::WasmtimeInstanceExport)(args...)
+struct WasmtimeMemory <: AbstractVector{UInt8}
+    export_::WasmtimeInstanceExport
+end
+
+"Page size of the memory"
+function memory_size(mem::WasmtimeMemory)
+    extern = mem.export_.extern[]
+    @assert extern.kind == WASM_EXTERN_MEMORY
+    memory = Ref(extern.of.memory)
+    store = mem.export_.wasmtime_instance.store
+
+    sz = LibWasmtime.wasmtime_memory_size(store, memory)
+    Int(sz)
+end
+
+function memory_max(mem::WasmtimeMemory)
+    extern = mem.export_.extern[]
+    @assert extern.kind == WASM_EXTERN_MEMORY
+    memory = Ref(extern.of.memory)
+    store = mem.export_.wasmtime_instance.store
+
+    mem_type = LibWasmtime.wasmtime_memory_type(store, memory)
+    max = Ref{UInt64}()
+    hasmax = LibWasmtime.wasmtime_memorytype_maximum(mem_type, max)
+    hasmax ? max[] : typemax(UInt64)
+end
+
+struct WasmtimeFunc
+    export_::WasmtimeInstanceExport
+end
+
+function Base.size(mem::WasmtimeMemory)
+    extern = mem.export_.extern[]
+    @assert extern.kind == WASM_EXTERN_MEMORY
+    memory = Ref(extern.of.memory)
+    store = mem.export_.wasmtime_instance.store
+
+    sz = LibWasmtime.wasmtime_memory_data_size(store, memory)
+    (Int(sz),)
+end
+
+function Base.getindex(mem::WasmtimeMemory, i)
+    extern = mem.export_.extern[]
+    @assert extern.kind == WASM_EXTERN_MEMORY
+    memory = Ref(extern.of.memory)
+    store = mem.export_.wasmtime_instance.store
+
+    1 <= i <= length(mem) || throw("out of bounds $i")
+    data_ptr = LibWasmtime.wasmtime_memory_data(store, memory) |> Ptr{UInt8}
+    unsafe_load(data_ptr, i)
+end
+
+function Base.setindex!(mem::WasmtimeMemory, v, i)
+    extern = mem.export_.extern[]
+    @assert extern.kind == WASM_EXTERN_MEMORY
+    memory = Ref(extern.of.memory)
+    store = mem.export_.wasmtime_instance.store
+
+    1 <= i <= length(mem) || throw("out of bounds $i")
+    data_ptr = LibWasmtime.wasmtime_memory_data(store, memory) |> Ptr{UInt8}
+
+    unsafe_store!(data_ptr, v, i)
+end
+
+function grow!(mem::WasmtimeMemory, delta)
+    extern = mem.export_.extern[]
+    @assert extern.kind == WASM_EXTERN_MEMORY
+    memory = Ref(extern.of.memory)
+    store = mem.export_.wasmtime_instance.store
+
+    if delta + memory_size(mem) > memory_max(mem)
+        max = memory_max(mem)
+        sz = memory_size(mem)
+        error("invalid delta $delta (maximum page size is $max, current $sz)")
+    end
+
+    prev_size = Ref{UInt64}()
+    @wt_check wasmtime_memory_grow(store, memory, delta, prev_size)
+    Int(prev_size[])
+end
+
+function (func::WasmtimeFunc)(args...)
+    wasmtime_export = func.export_
     extern = wasmtime_export.extern[]
     @assert extern.kind == WASM_EXTERN_FUNC "Expected an exported function but got type $(extern.kind)"
 
@@ -106,9 +188,19 @@ function (wasmtime_export::WasmtimeInstanceExport)(args...)
         @assert jtype == etype "Parameter #$i is of type $jtype, expected $etype"
 
         valunion = Ref{wasmtime_valunion}(wasmtime_valunion(Tuple(zero(UInt8) for _ in 1:16)))
-        ptr = Base.unsafe_convert(Ptr{wasmtime_valunion}, valunion)
-        GC.@preserve valunion ptr.i32 = etype(param)
-        push!(wasmtime_params, wasmtime_val(WASM_I32, valunion[]))
+        GC.@preserve valunion begin
+            ptr = Base.unsafe_convert(Ptr{wasmtime_valunion}, valunion)
+            if jtype == Int32
+                ptr.i32 = etype(param)
+            elseif jtype == Int64
+                ptr.i64 = etype(param)
+            elseif jtype == Float32
+                ptr.f32 = etype(param)
+            elseif jtype == Float64
+                ptr.f64 = etype(param)
+            end
+        end
+        push!(wasmtime_params, wasmtime_val(kind, valunion[]))
     end
 
     wasmtime_results = Vector{wasmtime_val}(undef, length(wasm_results))
@@ -184,8 +276,19 @@ function exports(instance::WasmtimeInstance)
         exists || error("Export #$i does not exists")
         name = unsafe_string(name_vec[].data, name_vec[].size)
 
-        WasmtimeInstanceExport(wasm_export_ptr, extern, instance, name)
+        export_ = WasmtimeInstanceExport(wasm_export_ptr, extern, instance, name)
+        if extern.kind == WASM_EXTERN_FUNC
+            WasmtimeFunc(export_)
+        elseif extern.kind == WASM_EXTERN_MEMORY
+            WasmtimeMemory(export_)
+        else # generic export, TODO: complete
+            export_
+        end
     end
 
     WasmExports(instance, wasmtime_exports)
 end
+
+name(func::WasmtimeFunc) = func.export_.name
+name(mem::WasmtimeMemory) = mem.export_.name
+name(export_::WasmtimeInstanceExport) = export_.name

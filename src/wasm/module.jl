@@ -50,7 +50,7 @@ function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
         res = func()
         wasm_res = Ref(convert(wasm_val_t, res))
         data_ptr = unsafe_load(results).data
-        wasm_val_copy(data_ptr, Base.pointer_from_objref(wasm_res))
+        wasm_val_copy(data_ptr, wasm_res)
 
         C_NULL
     end

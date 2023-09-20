@@ -107,6 +107,8 @@ mutable struct WasmExport <: AbstractWasmExport
     end
 end
 
+name(we::WasmExport) = we.name
+
 function (wasm_export::WasmExport)(args...)
     wasm_externtype_ptr = wasm_exporttype_type(wasm_export.wasm_export_ptr)
     @assert wasm_externtype_ptr != C_NULL "Failed to get export type for export $(wasm_export.name)"
@@ -115,7 +117,6 @@ function (wasm_export::WasmExport)(args...)
 
     wasm_export.wasm_extern(args...)
 end
-
 
 function exports(wasm_instance::WasmInstance)
     exports = WasmPtrVec(wasm_exporttype_t)
