@@ -136,6 +136,47 @@ end
     end
 end
 
+@testset "v128" begin
+    code = wat"""
+    (module
+        (func (param v128) (result f32)
+            local.get 0
+            f32x4.extract_lane 1)
+        (func (param v128) (result f32)
+            local.get 0
+            f32x4.extract_lane 0
+            local.get 0
+            f32x4.extract_lane 1
+            local.get 0
+            f32x4.extract_lane 2
+            local.get 0
+            f32x4.extract_lane 3
+            f32.add
+            f32.add
+            f32.add)
+        (export "f32x4_extract_lane" (func 0))
+        (export "f32x4_sum" (func 1)))
+    """
+
+    engine = WasmEngine()
+    store = Wasmtime.WasmtimeStore(engine)
+    module_ = Wasmtime.WasmtimeModule(engine, code)
+    instance = Wasmtime.WasmtimeInstance(store, module_)
+
+    f = exports(instance).f32x4_extract_lane
+    fsum = exports(instance).f32x4_sum
+
+    v = Wasmtime.f32x4(1f0, Float32(π), 42f0, -32f0)
+
+    out = f(v)
+    @test Float32(π) == out
+
+    x₁,x₂,x₃,x₄ = Wasmtime.f32x4(v)
+    out = fsum(v)
+
+    @test ((x₃+x₄)+x₂)+x₁ == out
+end
+
 # include("./table.jl")
 include("./import_export.jl")
 include("./wat2wasm.jl")

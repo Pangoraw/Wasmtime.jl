@@ -127,13 +127,30 @@ function Base.size(mem::WasmtimeMemory)
     (Int(sz),)
 end
 
-function Base.getindex(mem::WasmtimeMemory, i)
+function Base.getindex(mem::WasmtimeMemory, r::UnitRange{Int})
     extern = mem.export_.extern[]
     @assert extern.kind == WASM_EXTERN_MEMORY
     memory = Ref(extern.of.memory)
     store = mem.export_.wasmtime_instance.store
 
-    1 <= i <= length(mem) || throw("out of bounds $i")
+    1 <= first(r) <= last(r) <= length(mem) || throw(BoundsError(mem, r))
+
+    values = Vector{UInt8}(undef, length(r))
+
+    data_ptr = LibWasmtime.wasmtime_memory_data(store, memory) |> Ptr{UInt8}
+    @GC.preserve values mem unsafe_copyto!(pointer(values),
+                                           data_ptr, length(r))
+
+    values
+end
+
+function Base.getindex(mem::WasmtimeMemory, i::Int)
+    extern = mem.export_.extern[]
+    @assert extern.kind == WASM_EXTERN_MEMORY
+    memory = Ref(extern.of.memory)
+    store = mem.export_.wasmtime_instance.store
+
+    1 <= i <= length(mem) || throw(BoundsError(mem, i))
     data_ptr = LibWasmtime.wasmtime_memory_data(store, memory) |> Ptr{UInt8}
     unsafe_load(data_ptr, i)
 end
@@ -191,13 +208,17 @@ function (func::WasmtimeFunc)(args...)
         GC.@preserve valunion begin
             ptr = Base.unsafe_convert(Ptr{wasmtime_valunion}, valunion)
             if jtype == Int32
-                ptr.i32 = etype(param)
+                ptr.i32 = param
             elseif jtype == Int64
-                ptr.i64 = etype(param)
+                ptr.i64 = param
             elseif jtype == Float32
-                ptr.f32 = etype(param)
+                ptr.f32 = param
             elseif jtype == Float64
-                ptr.f64 = etype(param)
+                ptr.f64 = param
+            elseif kind == WASMTIME_V128
+                ptr.v128 = param
+            else
+                error("cannot use type $etype")
             end
         end
         push!(wasmtime_params, wasmtime_val(kind, valunion[]))

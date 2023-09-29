@@ -47,12 +47,16 @@ function WasmFunc(store::WasmStore, func::Function, return_type, input_types)
         results::Ptr{wasm_val_vec_t},
     )::Ptr{wasm_trap_t}
         # TODO: support passing the arguments
-        res = func()
-        wasm_res = Ref(convert(wasm_val_t, res))
-        data_ptr = unsafe_load(results).data
-        wasm_val_copy(data_ptr, wasm_res)
-
-        C_NULL
+        try
+            res = func()
+            wasm_res = Ref(convert(wasm_val_t, res))
+            data_ptr = unsafe_load(results).data
+            wasm_val_copy(data_ptr, wasm_res)
+            C_NULL
+        catch err
+            err_msg = string(err)
+            wasmtime_trap_new(err_msg, sizeof(err_msg))
+        end
     end
 
     # Create a pointer to jl_side_host(args, results)
