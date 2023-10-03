@@ -177,6 +177,22 @@ end
     @test ((x₃+x₄)+x₂)+x₁ == out
 end
 
+@testset "traps on unreachable" begin
+    code = wat"""
+    (module
+        (func unreachable)
+        (export "f" (func 0)))
+    """
+
+    engine = WasmEngine()
+    store = Wasmtime.WasmtimeStore(engine)
+    module_ = Wasmtime.WasmtimeModule(engine, code)
+    instance = Wasmtime.WasmtimeInstance(store, module_)
+
+    f = exports(instance).f
+    @test_throws ErrorException f()
+end
+
 # include("./table.jl")
 include("./import_export.jl")
 include("./wat2wasm.jl")

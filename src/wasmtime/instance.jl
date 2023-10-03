@@ -16,7 +16,7 @@ function WasmtimeInstance(store::WasmtimeStore, mod::WasmtimeModule)
 
     instance = Ref(wasmtime_instance_t(0, 0))
     wasm_trap_ptr = Ref(Ptr{wasm_trap_t}())
-    @wt_check GC.@preserve instance wasmtime_instance_new(
+    @wt_check wasmtime_instance_new(
         store,
         mod,
         C_NULL,
@@ -139,7 +139,7 @@ function Base.getindex(mem::WasmtimeMemory, r::UnitRange{Int})
 
     data_ptr = LibWasmtime.wasmtime_memory_data(store, memory) |> Ptr{UInt8}
     @GC.preserve values mem unsafe_copyto!(pointer(values),
-                                           data_ptr, length(r))
+                                           data_ptr + first(r) - 1, length(r))
 
     values
 end
@@ -226,16 +226,24 @@ function (func::WasmtimeFunc)(args...)
 
     wasmtime_results = Vector{wasmtime_val}(undef, length(wasm_results))
 
-    trap = Ref(Ptr{wasm_trap_t}())
-    @wt_check GC.@preserve wasmtime_params wasmtime_results wasmtime_func_call(
+    trap = Ref(Ptr{wasm_trap_t}(C_NULL))
+    @wt_check wasmtime_func_call(
         wasmtime_export.wasmtime_instance.store,
         func,
-        pointer(wasmtime_params),
+        wasmtime_params,
         length(wasmtime_params),
-        pointer(wasmtime_results),
+        wasmtime_results,
         length(wasmtime_results),
         trap
     )
+
+    if trap[] != C_NULL
+        bytes = WasmByteVec()
+        wasm_trap_message(trap[], bytes)
+        msg = unsafe_string(bytes.data, bytes.size)
+        wasm_trap_delete(trap[])
+        error(msg)
+    end
 
     results = map(wasmtime_results) do result
         if result.kind == WASMTIME_I32
